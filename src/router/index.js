@@ -4,12 +4,12 @@ import ProductDetail from '../components/ProductDetail.vue';
 
 const routes = [
     {
-        path: '/products',
+        path: '/amazon-rec/products',
         name: 'ProductList',
         component: ProductList,
     },
     {
-        path: '/product/:asin',
+        path: '/amazon-rec/product/:asin',
         name: 'ProductDetail',
         component: ProductDetail,
     },

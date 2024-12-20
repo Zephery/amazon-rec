@@ -64,7 +64,7 @@ def load_products():
     tables = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table';", conn)
     print(tables)
     # 从数据库中读取产品数据
-    products = pd.read_sql_query('SELECT * FROM products LIMIT 100', conn)
+    products = pd.read_sql_query('SELECT * FROM products', conn)
     print(products)
     return products
 
