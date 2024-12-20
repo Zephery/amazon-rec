@@ -1,12 +1,12 @@
 {
-  "name": "amazon-product-front",
+  "name": "amazon-rec",
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "serve": "node_modules/.bin/vite preview",
-    "build": "node_modules/.bin/vite build",
-    "dev": "node_modules/.bin/vite",
-    "preview": "node_modules/.bin/vite preview"
+    "serve": "vite preview",
+    "build": "vite build",
+    "dev": "vite",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",
