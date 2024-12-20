@@ -1,0 +1,22 @@
+{
+  "name": "amazon-product-front",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "serve": "node_modules/.bin/vite preview",
+    "build": "node_modules/.bin/vite build",
+    "dev": "node_modules/.bin/vite",
+    "preview": "node_modules/.bin/vite preview"
+  },
+  "dependencies": {
+    "@mdi/font": "^7.4.47",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "axios": "^1.7.9",
+    "vite": "^6.0.3",
+    "vite-plugin-vuetify": "^2.0.4",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0",
+    "vuetify": "^3.7.5"
+  },
+  "type": "module"
+}
