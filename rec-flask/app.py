@@ -26,7 +26,7 @@ redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)
 
 # 数据库连接
 db_lock = threading.Lock()
-conn = sqlite3.connect('/Users/wwwzh/PycharmProjects/amazon-product-backend/recommendation.db', check_same_thread=False)
+conn = sqlite3.connect('recommendation.db', check_same_thread=False)
 
 
 # 创建商品表和用户点击表
@@ -307,23 +307,44 @@ def get_recommendations():
 
 
 # 商品点击接口
-@app.route('/click/<asin>', methods=['POST'])
+@app.route('/products/<asin>', methods=['GET'])
 def record_click(asin):
     user_id = request.remote_addr  # 使用请求的IP地址作为用户ID
-    click_time = pd.Timestamp.now()
+    click_time = time.time()
     # 记录用户点击
-    with db_lock:
-        conn.execute('INSERT INTO user_clicks (user_id, asin, click_time) VALUES (?, ?, ?)',
-                     (user_id, asin, click_time))
-        conn.commit()
-    # 更新内存中的 user_clicks 数据
-    global user_clicks
-    user_clicks = pd.concat(
-        [user_clicks, pd.DataFrame({'user_id': [user_id], 'asin': [asin], 'click_time': [click_time]})],
-        ignore_index=True)
-    # 更新推荐模型
-    user_behavior_update(user_id, asin)
-    return jsonify({'message': 'Click recorded', 'user_id': user_id, 'asin': asin}), 200
+    try:
+        with db_lock:
+            conn.execute('INSERT INTO user_clicks (user_id, asin, click_time) VALUES (?, ?, ?)',
+                         (user_id, asin, click_time))
+            conn.commit()
+        # 更新内存中的 user_clicks 数据
+        global user_clicks
+        user_clicks = pd.concat(
+            [user_clicks, pd.DataFrame({'user_id': [user_id], 'asin': [asin], 'click_time': [click_time]})],
+            ignore_index=True)
+        # 更新推荐模型
+        user_behavior_update(user_id, asin)
+    except Exception as e:
+        logging.error(f"Error recording click: {e}")
+        return jsonify({'status': 'error', 'message': 'Failed to record click.'}), 500
+    # 获取被点击的商品详情
+    product = products[products['asin'] == asin]
+    product_data = product.to_dict(orient='records')
+    if product_data:
+        product_data = product_data[0]  # 获取单个商品的字典
+    else:
+        product_data = {}
+    return jsonify({
+        'status': 'success',
+        'data': {
+            'product': product_data,
+            'additional_info': {
+                'shipping': '免费配送',
+                'warranty': '一年保修',
+                'return_policy': '30天无理由退换'
+            }
+        }
+    })
 
 
 def update_user_profile(user_id, asin):
