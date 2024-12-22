@@ -26,7 +26,7 @@ redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)
 
 # 数据库连接
 db_lock = threading.Lock()
-conn = sqlite3.connect('recommendation.db', check_same_thread=False)
+conn = sqlite3.connect('db/recommend.db', check_same_thread=False)
 
 
 # 创建商品表和用户点击表
@@ -64,7 +64,7 @@ def load_products():
     tables = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table';", conn)
     print(tables)
     # 从数据库中读取产品数据
-    products = pd.read_sql_query('SELECT * FROM products', conn)
+    products = pd.read_sql_query('SELECT * FROM amazon_products', conn)
     print(products)
     return products
 
@@ -232,7 +232,7 @@ def re_ranking(user_id, fine_ranked_items):
 
 def get_offline_recommendations(user_id):
     cached_recommendations = redis_client.get(f"recommendations:{user_id}")
-    if cached_recommendations:
+    if cached_recommendations is not None and str(cached_recommendations.decode('utf-8')) != '[]':
         cached_recommendations = cached_recommendations.decode('utf-8')
         return json.loads(cached_recommendations)
     else:
@@ -259,14 +259,14 @@ def get_recommendations():
     page_size = int(request.args.get('per_page', 20))
     q = request.args.get('q')
     if q:
-        data = pd.read_sql_query("SELECT * FROM products WHERE title like '%" + q + "%' limit 100;", conn)
+        data = products[products['title'].str.contains(q, case=False, na=False)].sample(100).to_dict(orient='records')
         return jsonify({
             'user_id': user_id,
             'total': 'total_items',
             'pages': 'total_pages',
             'current_page': page,
             'per_page': page_size,
-            'products': ''
+            'products': data
         })
 
     final_recommendations = get_offline_recommendations(user_id)
@@ -387,6 +387,9 @@ def retrain_model():
 schedule.every().day.at("02:00").do(retrain_model)
 
 if __name__ == '__main__':
+    retrain_model()
+
+
     # 在另一个线程中运行调度器
     def run_scheduler():
         while True:
