@@ -12,7 +12,7 @@ RUN cd amazon-rec && npm config set registry https://registry.npmmirror.com && n
 
 # ======== 阶段 2：安装 Flask 后端 ========
 # 使用Python作为基础镜像
-FROM python:3.12
+FROM python:3.12 AS backend
 # 设置工作目录
 WORKDIR /app
 
