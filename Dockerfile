@@ -5,22 +5,30 @@ FROM node:latest AS frontend
 WORKDIR /app
 
 # 拷贝 Vue 前端代码到镜像
-COPY . ./amazon-rec/
+COPY amazon-rec/ ./amazon-rec/
 
 # 安装依赖并构建
 RUN cd amazon-rec && npm install && npm run build
 
 # ======== 阶段 2：安装 Flask 后端 ========
-FROM python:latest AS backend
+FROM python:3.11-slim AS backend
 
 # 设置工作目录
 WORKDIR /app
 
+# 安装必要的系统依赖（如果 Flask 项目需要）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    libjpeg-dev \
+    zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 # 拷贝 Flask 后端代码到镜像
 COPY rec-flask/ ./rec-flask/
 
-# 安装 Flask 依赖
-RUN pip install --no-cache-dir -r rec-flask/requirements.txt
+# 使用国内镜像安装 Python 包依赖（加速）
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r rec-flask/requirements.txt
 
 # ======== 阶段 3：整合前后端 ========
 FROM nginx:alpine
