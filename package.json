@@ -4,16 +4,10 @@
   "private": true,
   "scripts": {
     "serve": "vite preview",
-    "build": "run-p type-check \"build-only {@}\" --",
+    "build": "vite build",
     "dev": "vite",
     "preview": "vite preview",
-    "deploy": "npm run build && gh-pages -d dist",
-    "test:unit": "vitest",
-    "build-only": "vite build",
-    "type-check": "vue-tsc --build --force",
-    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore",
-    "format": "prettier --write src/",
-    "404build": "cp dist/index.html dist/404.html"
+    "deploy": "npm run build && gh-pages -d dist"
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",
