@@ -28,25 +28,17 @@ redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)
 db_lock = threading.Lock()
 conn = sqlite3.connect('db/recommend.db', check_same_thread=False)
 
+# 全局变量
+user_item_matrix = None
+user_item_sparse = None
+decomposed_matrix = None
+SVD = None
+user_profiles = {}
 
-# 创建商品表和用户点击表
+
+# 创建用户点击表
 def create_tables():
     with conn:
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS products (
-                asin TEXT PRIMARY KEY,
-                title TEXT,
-                imgUrl TEXT,
-                productURL TEXT,
-                stars REAL,
-                reviews INTEGER,
-                price REAL,
-                listPrice REAL,
-                category_id INTEGER,
-                isBestSeller INTEGER,
-                boughtInLastMonth INTEGER
-            )
-        ''')
         conn.execute('''
             CREATE TABLE IF NOT EXISTS user_clicks (
                 user_id TEXT,
@@ -61,11 +53,15 @@ create_tables()
 
 # 加载商品数据
 def load_products():
-    tables = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table';", conn)
-    print(tables)
     # 从数据库中读取产品数据
-    products = pd.read_sql_query('SELECT * FROM amazon_products', conn)
-    print(products)
+    tables = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table';", conn)
+    if 'amazon_products' in tables['name'].tolist():
+        products = pd.read_sql_query('SELECT * FROM amazon_products', conn)
+    elif 'products' in tables['name'].tolist():
+        products = pd.read_sql_query('SELECT * FROM products', conn)
+    else:
+        logging.error("No products table found in the database.")
+        products = pd.DataFrame()
     return products
 
 
@@ -82,95 +78,194 @@ def load_user_clicks():
 user_clicks = load_user_clicks()
 
 
-# 数据预处理和模型初始化
-def initialize_model():
-    global user_profiles, user_item_matrix, user_item_sparse, decomposed_matrix, SVD
+# 加载用户评论数据
+def load_user_reviews():
+    # 从数据库中读取用户评论数据
+    tables = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table';", conn)
+    if 'amazon_reviews' in tables['name'].tolist():
+        reviews = pd.read_sql_query('SELECT * FROM amazon_reviews', conn)
+    else:
+        logging.warning("No reviews table found in the database.")
+        reviews = pd.DataFrame()
+    return reviews
 
-    if user_clicks.empty:
-        # 如果没有用户点击数据，初始化空的数据结构
-        user_profiles = {}
-        user_item_matrix = pd.DataFrame()
-        user_item_sparse = None
-        decomposed_matrix = None
-        SVD = TruncatedSVD(n_components=20, random_state=42)
+
+user_reviews = load_user_reviews()
+
+# 限制数据规模的常量，可根据实际情况调整
+MAX_USERS = 10000  # 最多保留的用户数
+MAX_ITEMS = 5000  # 最多保留的商品数
+
+
+# 示例函数：过滤数据量
+def filter_high_activity(df, user_col='user_id', item_col='asin', user_threshold=10, item_threshold=10):
+    """
+    过滤低频用户和低频商品（只保留高活跃的用户和商品）
+    """
+    # 保留行为次数或评分数超过阈值的用户和商品
+    active_users = df[user_col].value_counts()
+    filtered_users = active_users[active_users >= user_threshold].index
+    active_items = df[item_col].value_counts()
+    filtered_items = active_items[active_items >= item_threshold].index
+    return df[(df[user_col].isin(filtered_users)) & (df[item_col].isin(filtered_items))]
+
+
+# 示例函数：构建稀疏矩阵
+def build_sparse_matrix(user_col, item_col, value_col, user_ids, item_ids, data):
+    """
+    构建稀疏矩阵，避免使用 Pandas 宽表
+    """
+    user_map = {user: idx for idx, user in enumerate(user_ids)}
+    item_map = {item: idx for idx, item in enumerate(item_ids)}
+
+    # 将用户和商品映射为索引
+    rows = data[user_col].map(user_map)
+    cols = data[item_col].map(item_map)
+    values = data[value_col]
+
+    # 构建 COO 稀疏矩阵并转换为 CSR
+    return csr_matrix((values, (rows, cols)), shape=(len(user_ids), len(item_ids)))
+
+
+# 优化后的用户画像初始化
+def initialize_model_with_reviews(user_clicks, user_reviews, products):
+    global user_profiles, user_item_sparse, decomposed_matrix, SVD, user_item_matrix
+
+    # 检查 products 是否为空
+    if products.empty:
+        logging.error("Products data is empty. Cannot initialize model.")
         return
 
-    # 统计每个用户对每个类别的点击次数
-    user_clicks_with_category = pd.merge(user_clicks, products[['asin', 'category_id']], on='asin', how='left')
+    # 如果没有用户评论数据，跳过模型初始化
+    if user_reviews.empty:
+        logging.warning("User reviews data is empty. Skipping model initialization with reviews.")
+        return
 
-    user_category_clicks = user_clicks_with_category.groupby(['user_id', 'category_id']).size().reset_index(
-        name='click_count')
+    # 限制评论表规模，只保留高频用户和商品
+    user_reviews = filter_high_activity(user_reviews, user_col='user_id', item_col='asin', user_threshold=5,
+                                        item_threshold=5)
+    user_reviews = user_reviews.head(MAX_USERS * MAX_ITEMS)  # 限制评论表的最大行数
 
-    user_total_clicks = user_category_clicks.groupby('user_id')['click_count'].sum().reset_index(name='total_clicks')
+    # 构建用户-商品交互稀疏矩阵
+    user_ids = user_reviews['user_id'].unique()[:MAX_USERS]  # 保留最多 MAX_USERS 个用户
+    item_ids = user_reviews['asin'].unique()[:MAX_ITEMS]  # 保留最多 MAX_ITEMS 个商品
 
-    user_category_clicks = pd.merge(user_category_clicks, user_total_clicks, on='user_id')
+    # 加权评分
+    user_reviews['rating_weighted'] = user_reviews['rating'] * (
+            1 + 0.1 * user_reviews['verified_purchase']) * (1 + 0.05 * user_reviews['helpful_vote'].fillna(0))
 
-    user_category_clicks['preference'] = user_category_clicks['click_count'] / user_category_clicks['total_clicks']
+    # 构建稀疏交互矩阵
+    user_item_sparse = build_sparse_matrix(
+        user_col='user_id',
+        item_col='asin',
+        value_col='rating_weighted',
+        user_ids=user_ids,
+        item_ids=item_ids,
+        data=user_reviews
+    )
 
-    # 构建用户画像字典
-    user_profiles = {}
-    for user_id, group in user_category_clicks.groupby('user_id'):
-        user_profiles[user_id] = dict(zip(group['category_id'], group['preference']))
-
-    # 构建用户-商品交互矩阵
-    user_item_matrix = user_clicks.groupby(['user_id', 'asin']).size().unstack(fill_value=0)
-
-    # 将数据转换为稀疏矩阵
-    user_item_sparse = csr_matrix(user_item_matrix.values)
-
-    # 使用TruncatedSVD进行矩阵分解
+    # 训练 SVD 模型
     SVD = TruncatedSVD(n_components=20, random_state=42)
     decomposed_matrix = SVD.fit_transform(user_item_sparse)
 
+    # 构建用户画像
+    category_preferences = []
+    for user_id in user_ids:
+        # 获取用户评论中涉及的商品类别
+        user_items = user_reviews[user_reviews['user_id'] == user_id]['asin']
+        user_categories = products[products['asin'].isin(user_items)]['category_id']
+        category_preference = user_categories.value_counts(normalize=True)  # 归一化偏好
+        category_preferences.append(category_preference.to_dict())
 
-initialize_model()
+    user_profiles = dict(zip(user_ids, category_preferences))
+
+    # 构建用户-商品交互矩阵，用于后续推荐
+    user_item_matrix = pd.DataFrame(user_item_sparse.toarray(), index=user_ids, columns=item_ids)
+
+
+# 示例调用
+initialize_model_with_reviews(user_clicks, user_reviews, products)
 
 
 def recall(user_id, top_n=500):
+    global user_item_matrix, decomposed_matrix
+
+    if user_item_matrix is None or decomposed_matrix is None:
+        # 模型尚未训练或无数据，返回空列表
+        logging.warning("User-item matrix or decomposed matrix is not available.")
+        return []
+
     if user_id not in user_item_matrix.index:
         # 对于新用户，返回全站最热门的商品
         popular_items = user_clicks['asin'].value_counts().head(top_n).index.tolist()
+        if not popular_items:
+            # 如果用户点击数据不足，返回随机商品
+            popular_items = products['asin'].sample(min(top_n, len(products))).tolist()
         return popular_items
     else:
         user_index = user_item_matrix.index.get_loc(user_id)
         user_vector = decomposed_matrix[user_index]
         similarity = cosine_similarity([user_vector], decomposed_matrix)[0]
-        similar_users_indices = similarity.argsort()[::-1][1:top_n + 1]
+
+        # 排除自身
+        similar_users_indices = similarity.argsort()[::-1][1:]
+
+        # 获取相似用户的交互物品
         similar_users = user_item_matrix.index[similar_users_indices]
         similar_users_interactions = user_item_matrix.loc[similar_users]
-        candidate_items = similar_users_interactions.sum(axis=0)
-        user_items = user_item_matrix.loc[user_id]
-        unseen_items = candidate_items[user_items == 0]
-        candidates = unseen_items[unseen_items > 0].index.tolist()
-        return candidates
+
+        # 获取用户已经交互的物品
+        user_interacted_items = set(user_item_matrix.columns[user_item_matrix.loc[user_id] > 0])
+
+        # 计算候选物品
+        candidate_items_scores = similar_users_interactions.sum(axis=0)
+        candidate_items_scores = candidate_items_scores.drop(index=user_interacted_items, errors='ignore')
+
+        # 如果候选物品不足，补充热门物品
+        if candidate_items_scores.empty or len(candidate_items_scores) < top_n:
+            popular_items = user_clicks['asin'].value_counts().index.difference(user_interacted_items).tolist()
+            candidate_items = pd.concat([pd.Series(candidate_items_scores.index), pd.Series(popular_items)],
+                                        ignore_index=True).drop_duplicates().head(top_n)
+        else:
+            candidate_items = candidate_items_scores.sort_values(ascending=False).index.tolist()
+
+        return candidate_items[:top_n]
 
 
 def coarse_ranking(candidate_items):
     if not candidate_items:
         # 如果候选列表为空，返回全站最热门的商品
         item_popularity = user_clicks['asin'].value_counts()
+        if item_popularity.empty:
+            item_popularity = products['asin'].value_counts()
     else:
         item_popularity = user_clicks[user_clicks['asin'].isin(candidate_items)]['asin'].value_counts()
+        if item_popularity.empty:
+            item_popularity = pd.Series(candidate_items)
 
     ranked_items = item_popularity.index.tolist()
+    if not ranked_items:
+        ranked_items = candidate_items
     return ranked_items
 
 
 def fine_ranking(user_id, ranked_items):
-    if user_id not in user_item_matrix.index or decomposed_matrix is None:
-        # 对于新用户或模型未训练的情况，直接返回粗排结果
+    global user_item_matrix, decomposed_matrix, SVD
+    if user_item_matrix is None or decomposed_matrix is None or SVD is None:
+        # 模型尚未训练或无数据，直接返回粗排结果
+        return ranked_items
+    if user_id not in user_item_matrix.index:
+        # 新用户直接返回粗排结果
         return ranked_items
     else:
         user_index = user_item_matrix.index.get_loc(user_id)
         user_vector = decomposed_matrix[user_index]
-        item_indices = [user_item_matrix.columns.get_loc(item) for item in ranked_items if
-                        item in user_item_matrix.columns]
+        item_indices = [i for i, item in enumerate(ranked_items) if item in user_item_matrix.columns]
         if not item_indices:
             return ranked_items  # 如果没有匹配的物品，直接返回粗排结果
-        item_vectors = SVD.components_.T[item_indices]
+        item_vectors = SVD.components_.T[[user_item_matrix.columns.get_loc(ranked_items[i]) for i in item_indices]]
         scores = np.dot(item_vectors, user_vector)
-        item_scores = pd.Series(scores, index=[ranked_items[i] for i in range(len(scores))])
-        item_scores = item_scores.dropna()
+        item_scores = pd.Series(scores, index=[ranked_items[i] for i in item_indices])
         # 调整评分，利用用户画像
         user_profile = user_profiles.get(user_id, {})
         # 获取商品的类别
@@ -209,23 +304,47 @@ def re_ranking(user_id, fine_ranked_items):
     for item in fine_ranked_items:
         category = item_categories.get(item)
         if pd.isna(category):
-            continue  # 跳过没有类别的商品
+            category = 'unknown'  # 将未知类别标记为 'unknown'
         if category not in category_items:
             category_items[category] = []
         category_items[category].append(item)
     # 按照用户偏好重排商品
     final_ranked_items = []
     added_items = set()
+
+    # 首先添加用户偏好类别的商品
     for category in preferred_categories:
         items = category_items.get(category, [])
-        final_ranked_items.extend(items)
-        added_items.update(items)
+        for item in items:
+            if item not in added_items:
+                final_ranked_items.append(item)
+                added_items.add(item)
+
+    # 添加未知类别的商品
+    unknown_items = category_items.get('unknown', [])
+    for item in unknown_items:
+        if item not in added_items:
+            final_ranked_items.append(item)
+            added_items.add(item)
+
     # 添加剩余的商品
-    remaining_items = [item for item in fine_ranked_items if item not in added_items]
-    final_ranked_items.extend(remaining_items)
+    for category, items in category_items.items():
+        if category not in preferred_categories and category != 'unknown':
+            for item in items:
+                if item not in added_items:
+                    final_ranked_items.append(item)
+                    added_items.add(item)
+
+    # 确保最终的推荐列表完整
+    for item in fine_ranked_items:
+        if item not in added_items:
+            final_ranked_items.append(item)
+            added_items.add(item)
+
     if not final_ranked_items:
         # 如果最终列表为空，返回原始的 fine_ranked_items
         final_ranked_items = fine_ranked_items
+
     logging.info(f"Final ranked items for {user_id}: {final_ranked_items}")
     return final_ranked_items
 
@@ -236,20 +355,35 @@ def get_offline_recommendations(user_id):
         cached_recommendations = cached_recommendations.decode('utf-8')
         return json.loads(cached_recommendations)
     else:
-        # 当缓存中没有推荐时，生成默认的推荐列表
+        # 当缓存中没有推荐时，生成推荐列表
         candidates = recall(user_id)
-        if not candidates:
-            # 如果没有候选商品（如没有用户点击数据），随机推荐商品
-            candidates = products['asin'].sample(500).tolist()
+        if not candidates or len(candidates) == 0:
+            # 如果没有候选商品，随机推荐商品
+            candidates = products['asin'].sample(min(500, len(products))).tolist()
         coarse_ranked = coarse_ranking(candidates)
         fine_ranked = fine_ranking(user_id, coarse_ranked)
         final_recommendations = re_ranking(user_id, fine_ranked)
-        if not final_recommendations:
+        if not final_recommendations or len(final_recommendations) == 0:
             # 如果最终推荐为空，随机推荐商品
-            final_recommendations = products['asin'].sample(500).tolist()
+            final_recommendations = products['asin'].sample(min(500, len(products))).tolist()
         # 存储到缓存
         redis_client.setex(f"recommendations:{user_id}", 3600, json.dumps(final_recommendations))
         return final_recommendations
+
+
+# 新增函数：在用户点击商品后，实时更新推荐列表并缓存
+def update_recommendations_after_click(user_id):
+    # 立即生成新的推荐列表
+    candidates = recall(user_id)
+    if not candidates or len(candidates) == 0:
+        candidates = products['asin'].sample(min(500, len(products))).tolist()
+    coarse_ranked = coarse_ranking(candidates)
+    fine_ranked = fine_ranking(user_id, coarse_ranked)
+    final_recommendations = re_ranking(user_id, fine_ranked)
+    if not final_recommendations or len(final_recommendations) == 0:
+        final_recommendations = products['asin'].sample(min(500, len(products))).tolist()
+    # 更新缓存
+    redis_client.setex(f"recommendations:{user_id}", 3600, json.dumps(final_recommendations))
 
 
 @app.route('/products', methods=['GET'])
@@ -258,12 +392,18 @@ def get_recommendations():
     page = int(request.args.get('page', 1))
     page_size = int(request.args.get('per_page', 20))
     q = request.args.get('q')
+
     if q:
-        data = products[products['title'].str.contains(q, case=False, na=False)].sample(100).to_dict(orient='records')
+        data = products[products['title'].str.contains(q, case=False, na=False)].copy()
+        total_items = len(data)
+        total_pages = total_items // page_size + (1 if total_items % page_size > 0 else 0)
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        data = data.iloc[start_idx:end_idx].to_dict(orient='records')
         return jsonify({
             'user_id': user_id,
-            'total': 'total_items',
-            'pages': 'total_pages',
+            'total': total_items,
+            'pages': total_pages,
             'current_page': page,
             'per_page': page_size,
             'products': data
@@ -272,18 +412,14 @@ def get_recommendations():
     final_recommendations = get_offline_recommendations(user_id)
 
     if not final_recommendations:
-        # If products DataFrame is empty, return an error message
-        if products.empty:
-            return jsonify({'message': 'No products available.'}), 404
+        # 如果没有推荐结果，从数据库中随机抽取一些商品作为推荐
+        sample_size = min(page_size, len(products))
+        if sample_size > 0:
+            paged_recommendations = products['asin'].sample(sample_size).tolist()
         else:
-            # 如果没有推荐结果，从数据库中随机抽取一些商品作为推荐
-            sample_size = min(page_size, len(products))
-            if sample_size > 0:
-                paged_recommendations = products['asin'].sample(sample_size).tolist()
-            else:
-                return jsonify({'message': 'No products available for sampling.'}), 404
-            total_items = len(paged_recommendations)
-            total_pages = 1  # 因为我们只返回了一页的随机商品
+            return jsonify({'message': 'No products available for sampling.'}), 404
+        total_items = len(paged_recommendations)
+        total_pages = 1  # 因为我们只返回了一页的随机商品
     else:
         total_items = len(final_recommendations)
         total_pages = total_items // page_size + (1 if total_items % page_size > 0 else 0)
@@ -324,6 +460,8 @@ def record_click(asin):
             ignore_index=True)
         # 更新推荐模型
         user_behavior_update(user_id, asin)
+        # 在用户点击商品后，立即更新推荐列表并缓存
+        update_recommendations_after_click(user_id)
     except Exception as e:
         logging.error(f"Error recording click: {e}")
         return jsonify({'status': 'error', 'message': 'Failed to record click.'}), 500
@@ -348,7 +486,12 @@ def record_click(asin):
 
 
 def update_user_profile(user_id, asin):
-    category = products.set_index('asin').loc[asin]['category_id']
+    global user_profiles
+    try:
+        category = products.set_index('asin').loc[asin]['category_id']
+    except KeyError:
+        # 如果商品不存在或没有类别，直接返回
+        return
     if pd.isna(category):
         return  # 如果商品没有类别，直接返回
     user_profile = user_profiles.get(user_id, {})
@@ -373,6 +516,8 @@ def retrain_model():
     print("Retraining model...")
     if user_clicks.empty:
         print("No user clicks data available.")
+        user_item_matrix = None
+        decomposed_matrix = None
         return
     # 重新构建用户-商品交互矩阵
     user_item_matrix = user_clicks.groupby(['user_id', 'asin']).size().unstack(fill_value=0)
