@@ -20,7 +20,7 @@ WORKDIR /app
 COPY rec-flask/ ./rec-flask/
 
 # 使用国内镜像安装 Python 包依赖（加速）
-RUN cd ./rec-flask && deactivate && pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
+RUN cd ./rec-flask && python3 -m venv .venv && . .venv/bin/activate && pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
 
 # ======== 阶段 3：整合前后端 ========
 FROM nginx:alpine
