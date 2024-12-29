@@ -1,2 +1,0 @@
-large_file_path filter=lfs diff=lfs merge=lfs -text
-rec-flask/db/recommend.db filter=lfs diff=lfs merge=lfs -text

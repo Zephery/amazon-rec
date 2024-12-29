@@ -1,26 +1,14 @@
 <script setup lang="ts">
-import {RouterLink, RouterView} from 'vue-router'
+import { RouterLink, RouterView } from 'vue-router'
 import HelloWorld from './components/HelloWorld.vue'
-import ProductList from './components/ProductList.vue'
 </script>
 
 <template>
-  <div>
-    <el-button type="primary">我是按钮哦</el-button>
-  </div>
-
-  <ProductList/>
-  <main class="flex justify-center items-center flex-col px-[20px] gap-4">
-    <div class="text-xl text-sky-500">欢迎使用 random-number-system</div>
-    <p class="text-gray-500 text-sm">
-      它可以自动生成给定范围内的随机正整数，可用帮你打乱顺序记东西：比如记英语单词~
-    </p>
-  </main>
   <header>
-    <img alt="Vue logo" class="logo" src="@/assets/logo.svg" width="125" height="125"/>
+    <img alt="Vue logo" class="logo" src="../src/assets/logo.svg" width="125" height="125" />
 
-    <div class="wrapper bg-yellow-500">
-      <HelloWorld msg="You did it!"/>
+    <div class="wrapper">
+      <HelloWorld msg="You did it!" />
 
       <nav>
         <RouterLink to="/">Home</RouterLink>
@@ -29,7 +17,7 @@ import ProductList from './components/ProductList.vue'
     </div>
   </header>
 
-  <RouterView/>
+  <RouterView />
 </template>
 
 <style scoped>
