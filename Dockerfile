@@ -8,7 +8,7 @@ WORKDIR /app
 COPY . ./amazon-rec/
 
 # 安装依赖并构建
-RUN cd amazon-rec && npm install && npm run build
+RUN cd amazon-rec && npm config set registry https://registry.npmmirror.com && npm install && npm run build
 
 # ======== 阶段 2：安装 Flask 后端 ========
 FROM python:3.11-slim AS backend
