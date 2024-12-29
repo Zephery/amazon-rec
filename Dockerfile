@@ -11,8 +11,8 @@ COPY . ./amazon-rec/
 RUN cd amazon-rec && npm config set registry https://registry.npmmirror.com && npm install && npm run build
 
 # ======== 阶段 2：安装 Flask 后端 ========
-FROM python:3.11-slim AS backend
-
+# 使用Python作为基础镜像
+FROM python:3.12
 # 设置工作目录
 WORKDIR /app
 
@@ -20,7 +20,7 @@ WORKDIR /app
 COPY rec-flask/ ./rec-flask/
 
 # 使用国内镜像安装 Python 包依赖（加速）
-RUN cd ./rec-flask && python3 -m venv .venv && . .venv/bin/activate && pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
+RUN cd ./rec-flask && pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
 
 # ======== 阶段 3：整合前后端 ========
 FROM nginx:alpine
