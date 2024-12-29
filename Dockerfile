@@ -5,7 +5,7 @@ FROM node:latest AS frontend
 WORKDIR /app
 
 # 拷贝 Vue 前端代码到镜像
-COPY amazon-rec/ ./amazon-rec/
+COPY . ./amazon-rec/
 
 # 安装依赖并构建
 RUN cd amazon-rec && npm install && npm run build
