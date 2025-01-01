@@ -371,19 +371,59 @@ def get_offline_recommendations(user_id):
         return final_recommendations
 
 
-# 新增函数：在用户点击商品后，实时更新推荐列表并缓存
-def update_recommendations_after_click(user_id):
-    # 立即生成新的推荐列表
-    candidates = recall(user_id)
-    if not candidates or len(candidates) == 0:
-        candidates = products['asin'].sample(min(500, len(products))).tolist()
-    coarse_ranked = coarse_ranking(candidates)
-    fine_ranked = fine_ranking(user_id, coarse_ranked)
-    final_recommendations = re_ranking(user_id, fine_ranked)
-    if not final_recommendations or len(final_recommendations) == 0:
-        final_recommendations = products['asin'].sample(min(500, len(products))).tolist()
-    # 更新缓存
-    redis_client.setex(f"recommendations:{user_id}", 3600, json.dumps(final_recommendations))
+def get_similar_users(user_id, top_k=5):
+    """
+    找到与当前用户最相似的前 top_k 个用户
+    """
+    global user_item_matrix, decomposed_matrix
+
+    if user_item_matrix is None or decomposed_matrix is None:
+        return []
+
+    if user_id not in user_item_matrix.index:
+        return []
+
+    # 获取当前用户的向量
+    user_index = user_item_matrix.index.get_loc(user_id)
+    user_vector = decomposed_matrix[user_index]
+
+    # 计算与所有用户的余弦相似度
+    similarity = cosine_similarity([user_vector], decomposed_matrix)[0]
+
+    # 排除自身，找到最相似的用户
+    similar_users_indices = similarity.argsort()[::-1][1:top_k + 1]
+    similar_users = user_item_matrix.index[similar_users_indices]
+
+    return similar_users.tolist()
+
+
+def recommend_based_on_similar_users(user_id, top_n=20):
+    """
+    基于相似用户生成推荐列表
+    """
+    similar_users = get_similar_users(user_id, top_k=5)
+    if not similar_users:
+        return []
+
+    # 获取相似用户的交互商品
+    similar_users_interactions = user_item_matrix.loc[similar_users]
+
+    # 获取当前用户已经交互的商品
+    user_interacted_items = set(user_item_matrix.columns[user_item_matrix.loc[user_id] > 0])
+
+    # 计算候选商品
+    candidate_items_scores = similar_users_interactions.sum(axis=0)
+    candidate_items_scores = candidate_items_scores.drop(index=user_interacted_items, errors='ignore')
+
+    # 如果候选商品不足，补充热门商品
+    if candidate_items_scores.empty or len(candidate_items_scores) < top_n:
+        popular_items = user_clicks['asin'].value_counts().index.difference(user_interacted_items).tolist()
+        candidate_items = pd.concat([pd.Series(candidate_items_scores.index), pd.Series(popular_items)],
+                                    ignore_index=True).drop_duplicates().head(top_n)
+    else:
+        candidate_items = candidate_items_scores.sort_values(ascending=False).index.tolist()
+
+    return candidate_items[:top_n]
 
 
 @app.route('/products', methods=['GET'])
@@ -409,7 +449,17 @@ def get_recommendations():
             'products': data
         })
 
-    final_recommendations = get_offline_recommendations(user_id)
+    # 优先使用用户画像生成推荐列表
+    if user_id in user_profiles:
+        candidates = recall(user_id)
+        if not candidates or len(candidates) == 0:
+            candidates = products['asin'].sample(min(500, len(products))).tolist()
+        coarse_ranked = coarse_ranking(candidates)
+        fine_ranked = fine_ranking(user_id, coarse_ranked)
+        final_recommendations = re_ranking(user_id, fine_ranked)
+    else:
+        # 如果用户画像不存在，使用相似用户生成推荐列表
+        final_recommendations = recommend_based_on_similar_users(user_id, top_n=500)
 
     if not final_recommendations:
         # 如果没有推荐结果，从数据库中随机抽取一些商品作为推荐
@@ -442,6 +492,22 @@ def get_recommendations():
     })
 
 
+def update_recommendations_after_click(user_id, asin):
+    # 更新用户画像
+    update_user_profile(user_id, asin)
+    # 立即生成新的推荐列表
+    candidates = recall(user_id)
+    if not candidates or len(candidates) == 0:
+        candidates = products['asin'].sample(min(500, len(products))).tolist()
+    coarse_ranked = coarse_ranking(candidates)
+    fine_ranked = fine_ranking(user_id, coarse_ranked)
+    final_recommendations = re_ranking(user_id, fine_ranked)
+    if not final_recommendations or len(final_recommendations) == 0:
+        final_recommendations = products['asin'].sample(min(500, len(products))).tolist()
+    # 更新缓存
+    redis_client.setex(f"recommendations:{user_id}", 3600, json.dumps(final_recommendations))
+
+
 # 商品点击接口
 @app.route('/products/<asin>', methods=['GET'])
 def record_click(asin):
@@ -461,7 +527,7 @@ def record_click(asin):
         # 更新推荐模型
         user_behavior_update(user_id, asin)
         # 在用户点击商品后，立即更新推荐列表并缓存
-        update_recommendations_after_click(user_id)
+        update_recommendations_after_click(user_id, asin)
     except Exception as e:
         logging.error(f"Error recording click: {e}")
         return jsonify({'status': 'error', 'message': 'Failed to record click.'}), 500
