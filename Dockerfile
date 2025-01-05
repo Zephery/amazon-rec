@@ -16,11 +16,15 @@ FROM python:3.12 AS backend
 # 设置工作目录
 WORKDIR /app
 
+# 复制 requirements.txt 到工作目录（为了提前缓存依赖）
+COPY rec-flask/requirements.txt ./rec-flask/requirements.txt
+
+# 创建虚拟环境并安装依赖
+RUN python -m venv venv \
+    && ./venv/bin/pip install --no-cache-dir -r requirements.txt
+
 # 拷贝 Flask 后端代码到镜像
 COPY rec-flask/ ./rec-flask/
-
-# 使用国内镜像安装 Python 包依赖（加速）
-RUN cd ./rec-flask && pip install --no-cache-dir -r requirements.txt
 
 # ======== 阶段 3：整合前后端 ========
 FROM nginx:alpine
