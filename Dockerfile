@@ -20,7 +20,7 @@ WORKDIR /app
 COPY rec-flask/requirements.txt ./rec-flask/requirements.txt
 
 # 创建虚拟环境并安装依赖
-RUN python -m venv venv \
+RUN cd rec-flask && python -m venv venv \
     && ./venv/bin/pip install --no-cache-dir -r requirements.txt
 
 # 拷贝 Flask 后端代码到镜像
