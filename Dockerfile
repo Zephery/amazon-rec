@@ -1,49 +1,56 @@
-# ======== 阶段 1：构建 Vue 前端 ========
-FROM node:latest AS frontend
+# 阶段 1：构建 Vue 前端静态文件
+FROM cjie.eu.org/node:latest AS frontend
 
 # 设置工作目录
 WORKDIR /app
 
-# 拷贝 Vue 前端代码到镜像
-COPY . ./amazon-rec/
+# 拷贝前端代码到工作目录
+COPY ./ ./amazon-rec
 
-# 安装依赖并构建
-RUN cd amazon-rec && npm config set registry https://registry.npmmirror.com && npm install && npm run build
+# 构建 Vue 应用
+RUN cd amazon-rec \
+    && npm config set registry https://registry.npmmirror.com \
+    && npm install \
+    && npm run build
 
-# ======== 阶段 2：安装 Flask 后端 ========
-# 使用Python作为基础镜像
-FROM python:3.12 AS backend
+# 阶段 2：构建 Flask 应用及依赖
+FROM cjie.eu.org/python:3.12 AS backend
+
 # 设置工作目录
-WORKDIR /app
+WORKDIR /app/rec-flask
 
-# 复制 requirements.txt 到工作目录（为了提前缓存依赖）
-COPY rec-flask/requirements.txt ./rec-flask/requirements.txt
+# 拷贝 Flask 依赖文件
+COPY ./rec-flask/requirements.txt ./requirements.txt
 
 # 创建虚拟环境并安装依赖
-RUN cd rec-flask && python -m venv venv \
+RUN python -m venv ./venv \
     && ./venv/bin/pip install --no-cache-dir -r requirements.txt
 
-# 拷贝 Flask 后端代码到镜像
-COPY rec-flask/ ./rec-flask/
+# 拷贝 Flask 源代码
+COPY ./rec-flask ./
 
-# ======== 阶段 3：整合前后端 ========
-FROM nginx:alpine
+# 阶段 3：整合前后端到最终镜像
+FROM cjie.eu.org/nginx:latest
 
-# 设置 Nginx 配置文件路径
-COPY nginx.conf /etc/nginx/nginx.conf
+# 设置默认工作目录
+WORKDIR /app
 
-# 拷贝 Vue 构建生成的静态文件到 Nginx 的默认网页目录
+# 拷贝前端构建后的静态资源到 Nginx 网站目录
 COPY --from=frontend /app/amazon-rec/dist /usr/share/nginx/html
 
-# 拷贝 Flask 后端的代码到 Nginx 容器
+# 拷贝后端（Flask）虚拟环境及源码
 COPY --from=backend /app/rec-flask /app/rec-flask
 
-# 安装 Flask 运行环境
-RUN apk add --no-cache python3 py3-pip \
-    && pip install --no-cache-dir flask
+# 拷贝自定义 Nginx 配置文件
+COPY ./nginx.conf /etc/nginx/nginx.conf
+
+# 安装运行所需的系统 Python
+RUN apt-get update && apt-get install -y python3 python3-pip \
+    && ln -sf /app/rec-flask/venv/bin/python3 /usr/bin/python3 \
+    && ln -sf /app/rec-flask/venv/bin/pip /usr/bin/pip
 
 # 暴露端口
 EXPOSE 80
 
-# 同时运行 Flask 和 Nginx
-CMD ["/bin/sh", "-c", "python3 /app/rec-flask/app.py & nginx -g 'daemon off;'"]
+# 启动 Flask 和 Nginx 服务
+CMD ["/bin/sh", "-c", "/app/rec-flask/venv/bin/python3 /app/rec-flask/app.py & nginx -g 'daemon off;'"]
