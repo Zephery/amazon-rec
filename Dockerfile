@@ -45,7 +45,7 @@ COPY --from=backend /app/rec-flask /app/rec-flask
 COPY ./nginx.conf /etc/nginx/nginx.conf
 
 # 安装运行所需的系统 Python
-RUN apt-get update && apt-get install -y python3 python3-pip \
+RUN apt-get update && apt-get install -y python3.12 python3.12-pip \
     && ln -sf /app/rec-flask/venv/bin/python3 /usr/bin/python3 \
     && ln -sf /app/rec-flask/venv/bin/pip /usr/bin/pip
 
