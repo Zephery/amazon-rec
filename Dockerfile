@@ -41,6 +41,8 @@ COPY --from=frontend /app/amazon-rec/dist /usr/share/nginx/html
 # 拷贝后端（Flask）虚拟环境及源码
 COPY --from=backend /app/rec-flask /app/rec-flask
 
+COPY .ssl /etc/nginx/ssl
+
 # 拷贝自定义 Nginx 配置文件
 COPY ./nginx.conf /etc/nginx/nginx.conf
 
