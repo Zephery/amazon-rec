@@ -450,6 +450,11 @@ def recommend_based_on_similar_users(user_id, top_n=20):
     return candidate_items[:top_n]
 
 
+@app.route('/')
+def index():
+    return "ok"
+
+
 @app.route('/products', methods=['GET'])
 def get_recommendations():
     user_id = request.remote_addr  # 使用请求的IP地址作为用户ID
