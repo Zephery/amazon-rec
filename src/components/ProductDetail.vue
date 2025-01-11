@@ -7,12 +7,12 @@
           <img :src="product.imgUrl" :alt="product.title" class="product-image">
         </div>
       </v-col>
-      
+
       <v-col cols="12" md="6">
         <!-- 商品信息区域 -->
         <div class="product-info">
           <h1 class="product-title">{{ product.title }}</h1>
-          
+
           <!-- 价格信息 -->
           <div class="price-section">
             <div class="current-price">
@@ -31,11 +31,11 @@
           <div class="rating-section">
             <div class="stars">
               <v-rating
-                :model-value="Number(product.stars)"
-                color="amber"
-                density="compact"
-                half-increments
-                readonly
+                  :model-value="Number(product.stars)"
+                  color="amber"
+                  density="compact"
+                  half-increments
+                  readonly
               ></v-rating>
               <span class="rating-text">{{ product.stars }} 星</span>
             </div>
@@ -56,14 +56,14 @@
                 </template>
                 <v-list-item-title>{{ additionalInfo.shipping }}</v-list-item-title>
               </v-list-item>
-              
+
               <v-list-item v-if="additionalInfo.return_policy">
                 <template v-slot:prepend>
                   <v-icon color="primary">mdi-undo</v-icon>
                 </template>
                 <v-list-item-title>{{ additionalInfo.return_policy }}</v-list-item-title>
               </v-list-item>
-              
+
               <v-list-item v-if="additionalInfo.warranty">
                 <template v-slot:prepend>
                   <v-icon color="primary">mdi-shield-check</v-icon>
@@ -76,21 +76,21 @@
           <!-- 购买按钮 -->
           <div class="action-buttons">
             <v-btn
-              color="primary"
-              block
-              size="large"
-              :href="product.productURL"
-              target="_blank"
-              class="mb-4"
+                color="primary"
+                block
+                size="large"
+                :href="product.productURL"
+                target="_blank"
+                class="mb-4"
             >
               <v-icon left>mdi-cart</v-icon>
               在亚马逊购买
             </v-btn>
-            
+
             <v-btn
-              variant="outlined"
-              block
-              @click="goBack"
+                variant="outlined"
+                block
+                @click="goBack"
             >
               返回列表
             </v-btn>
@@ -103,6 +103,7 @@
 
 <script>
 import axios from 'axios';
+import {HTTP_REQUEST_URL} from '../../config/app';
 
 export default {
   data() {
@@ -114,7 +115,7 @@ export default {
   async created() {
     const {asin} = this.$route.params;
     try {
-      const response = await axios.get(`http://127.0.0.1:5000/products/${asin}`);
+      const response = await axios.get(HTTP_REQUEST_URL + `/products/${asin}`);
       this.product = response.data.data.product;
       this.additionalInfo = response.data.data.additional_info;
     } catch (error) {
@@ -134,7 +135,7 @@ export default {
   padding: 20px;
   background: white;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   height: 400px;
   width: 100%;
   display: flex;
@@ -237,7 +238,7 @@ export default {
   .product-title {
     font-size: 20px;
   }
-  
+
   .current-price {
     font-size: 24px;
   }

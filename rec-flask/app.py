@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import sqlite3
 import threading
 import time
@@ -13,6 +14,29 @@ from flask_cors import CORS
 from scipy.sparse import csr_matrix
 from sklearn.decomposition import TruncatedSVD
 from sklearn.metrics.pairwise import cosine_similarity
+
+
+# 检查数据库是否存在
+def check_db():
+    if not os.path.exists("db/recommend.db"):
+        print("数据库不存在，初始化数据库...")
+        initialize_database()
+    else:
+        print("数据库存在，启动应用...")
+
+
+# 调用其他 Python 文件生成数据库
+def initialize_database():
+    from db.amazon_categories import init_categories
+    init_categories()
+    from db.amazon_products import init_products
+    init_products()
+    from db.amazon_reviews import init_review
+    init_review()
+
+
+# 在应用启动时检查数据库
+check_db()
 
 # 创建 Flask 应用
 app = Flask(__name__)

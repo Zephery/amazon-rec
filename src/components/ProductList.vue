@@ -68,6 +68,7 @@
 
 <script>
 import axios from 'axios';
+import {HTTP_REQUEST_URL} from "../../config/app.js";
 
 export default {
   data() {
@@ -119,7 +120,7 @@ export default {
 
       this.loading = true;
       try {
-        const response = await axios.get('http://127.0.0.1:5000/products', {
+        const response = await axios.get(HTTP_REQUEST_URL + '/products', {
           params: {
             page: page,
             per_page: 10,
