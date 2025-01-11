@@ -1,6 +1,7 @@
 git pull
 
-docker stop --name amazon-rec
+docker stop $(docker ps -a | grep "amazon-rec" | awk '{print $1 }')
+docker rm $(docker ps -a | grep "amazon-rec" | awk '{print $1 }')
 
 docker build . -t amazon-rec
 
