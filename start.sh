@@ -1,6 +1,6 @@
 git pull
 
-docker stop amazon-rec
+docker stop --name amazon-rec
 
 docker build . -t amazon-rec
 
