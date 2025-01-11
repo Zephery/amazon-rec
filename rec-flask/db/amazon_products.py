@@ -7,14 +7,15 @@ import pandas as pd
 
 
 def init_products():
-    # 从 Kaggle 下载最新版本的数据集
+    # 下载数据集部分保持不变
     path = kagglehub.dataset_download("asaniczka/amazon-products-dataset-2023-1-4m-products")
     print("Path to dataset files:", path)
 
+    # 查找 CSV 文件
     data_file = None
     for root, dirs, files in os.walk(path):
         for file in files:
-            if file.endswith(".csv"):  # 可能需要修改扩展名根据数据格式
+            if file.endswith(".csv"):
                 data_file = os.path.join(root, file)
                 break
 
@@ -23,24 +24,26 @@ def init_products():
 
     print("CSV file found:", data_file)
 
-    # 使用 pandas 读取 CSV 文件
-    df = pd.read_csv(data_file)
-
-    # 连接 SQLite 数据库，或创建新数据库文件
+    # 连接 SQLite 数据库
     conn = sqlite3.connect('db/recommend.db')
 
-    # 将数据写入 SQLite 数据库中的一个表
-    # 如果表不存在，默认 pandas 会创建它
+    # 分块读取和写入
     table_name = "amazon_products"
-    df.to_sql(table_name, conn, if_exists="replace", index=False)
+    chunksize = 10000  # 每次处理 10,000 行数据
+
+    # 声明索引变量以判断是否创建表
+    first_chunk = True
+
+    for chunk in pd.read_csv(data_file, chunksize=chunksize):
+        chunk.to_sql(table_name, conn, if_exists="replace" if first_chunk else "append", index=False)
+        first_chunk = False  # 只在第一块时使用 "replace"
 
     print(f"Data has been written to the SQLite database in table '{table_name}'.")
 
-    # 如果需要验证写入，运行一个简单的查询
+    # 验证写入的行数
     cursor = conn.cursor()
     cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
     count = cursor.fetchone()[0]
     print(f"Number of rows in table '{table_name}': {count}")
 
-    # 关闭数据库连接
     conn.close()
