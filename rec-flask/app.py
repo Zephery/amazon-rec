@@ -76,54 +76,16 @@ create_tables()
 
 
 # 加载商品数据
-def load_products(batch_size=10000):
-    """
-    分页从数据库读取产品数据。
-    :param batch_size: 每次读取的记录数。
-    :return: 包含所有产品数据的 DataFrame。
-    """
+def load_products():
     # 从数据库中读取产品数据
     tables = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table';", conn)
-
-    table_name = None
     if 'amazon_products' in tables['name'].tolist():
-        table_name = 'amazon_products'
+        products = pd.read_sql_query('SELECT * FROM amazon_products', conn)
     elif 'products' in tables['name'].tolist():
-        table_name = 'products'
-
-    if not table_name:
-        logging.error("No products table found in the database.")
-        return pd.DataFrame()
-
-    logging.info(f"Reading data from table: {table_name}")
-
-    # 分页读取数据
-    offset = 0  # 当前读取起始点
-    all_products = []  # 用于保存所有分页的数据
-
-    while True:
-        # 分批读取
-        query = f"SELECT * FROM {table_name} LIMIT {batch_size} OFFSET {offset}"
-        batch = pd.read_sql_query(query, conn)
-
-        # 如果当前批次没有数据，结束循环
-        if batch.empty:
-            break
-
-        all_products.append(batch)
-
-        # 移动到下一个分页的起始点
-        offset += batch_size
-
-        logging.info(f"Loaded {len(batch)} records. Total so far: {offset}")
-
-    # 合并所有分页数据
-    if all_products:
-        products = pd.concat(all_products, ignore_index=True)
+        products = pd.read_sql_query('SELECT * FROM products', conn)
     else:
+        logging.error("No products table found in the database.")
         products = pd.DataFrame()
-
-    logging.info(f"Loaded a total of {len(products)} records")
     return products
 
 
@@ -143,7 +105,7 @@ user_clicks = load_user_clicks()
 # 加载用户评论数据
 def load_user_reviews():
     # 从数据库中读取用户评论数据
-    tables = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table';", conn)
+    tables = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table' limit 10000;", conn)
     if 'amazon_reviews' in tables['name'].tolist():
         reviews = pd.read_sql_query('SELECT * FROM amazon_reviews', conn)
     else:
