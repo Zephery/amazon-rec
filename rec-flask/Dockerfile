@@ -1,4 +1,4 @@
-FROM cjie.eu.org/python:3.12
+FROM dockerpull.cn/python:3.12
 
 # 设置环境变量
 ENV FLASK_APP=app.py

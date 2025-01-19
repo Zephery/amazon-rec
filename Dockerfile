@@ -1,5 +1,5 @@
 # 阶段 1：构建 Vue 前端静态文件
-FROM cjie.eu.org/node:latest AS frontend
+FROM dockerpull.cn/node:latest AS frontend
 
 # 设置工作目录
 WORKDIR /app
@@ -15,7 +15,7 @@ RUN cd amazon-rec \
 
 
 # 阶段 3：整合前后端到最终镜像
-FROM cjie.eu.org/nginx:latest
+FROM dockerpull.cn/nginx:latest
 
 # 设置默认工作目录
 WORKDIR /app
