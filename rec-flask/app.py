@@ -153,7 +153,7 @@ def build_sparse_matrix(user_col, item_col, value_col, user_ids, item_ids, data)
 
 # 优化后的用户画像初始化
 def initialize_model_with_reviews(user_clicks, user_reviews, products):
-    global user_profiles, user_item_sparse, decomposed_matrix, SVD, user_item_matrix
+    global user_profiles, user_item_sparse, decomposed_matrix, SVD, user_item_matrix, item_latent_vectors, asin_to_category
 
     # 检查 products 是否为空
     if products.empty:
@@ -206,8 +206,14 @@ def initialize_model_with_reviews(user_clicks, user_reviews, products):
     # 构建用户-商品交互矩阵，用于后续推荐
     user_item_matrix = pd.DataFrame(user_item_sparse.toarray(), index=user_ids, columns=item_ids)
 
+    # 预先计算 item_latent_vectors
+    item_latent_vectors = pd.DataFrame(SVD.components_.T, index=user_item_matrix.columns)
 
-# 示例调用
+    # 预先计算 asin_to_category
+    asin_to_category = products.set_index('asin')['category_id']
+
+
+# 初始化模型
 initialize_model_with_reviews(user_clicks, user_reviews, products)
 
 
@@ -274,7 +280,7 @@ def coarse_ranking(candidate_items):
 
 
 def fine_ranking(user_id, ranked_items):
-    global user_item_matrix, decomposed_matrix, SVD
+    global user_item_matrix, decomposed_matrix, SVD, item_latent_vectors, asin_to_category
     if user_item_matrix is None or decomposed_matrix is None or SVD is None:
         # 模型尚未训练或无数据，直接返回粗排结果
         return ranked_items
@@ -284,28 +290,28 @@ def fine_ranking(user_id, ranked_items):
     else:
         user_index = user_item_matrix.index.get_loc(user_id)
         user_vector = decomposed_matrix[user_index]
-        item_indices = [i for i, item in enumerate(ranked_items) if item in user_item_matrix.columns]
-        if not item_indices:
+        # 获取商品的潜在向量
+        item_vectors = item_latent_vectors.reindex(ranked_items).dropna()
+        if item_vectors.empty:
             return ranked_items  # 如果没有匹配的物品，直接返回粗排结果
-        item_vectors = SVD.components_.T[[user_item_matrix.columns.get_loc(ranked_items[i]) for i in item_indices]]
+        item_names = item_vectors.index.tolist()
+        item_vectors = item_vectors.values
+
+        # 计算评分
         scores = np.dot(item_vectors, user_vector)
-        item_scores = pd.Series(scores, index=[ranked_items[i] for i in item_indices])
+        item_scores = pd.Series(scores, index=item_names)
+
         # 调整评分，利用用户画像
         user_profile = user_profiles.get(user_id, {})
         # 获取商品的类别
-        item_categories = products.set_index('asin').reindex(item_scores.index)['category_id']
-        adjusted_scores = []
-        for idx, item in enumerate(item_scores.index):
-            category = item_categories.get(item)
-            if pd.isna(category):
-                preference = 0
-            else:
-                preference = user_profile.get(str(int(category)), 0)
-            # 根据用户对类别的偏好程度调整评分
-            adjusted_score = item_scores.iloc[idx] * (1 + preference)
-            adjusted_scores.append(adjusted_score)
+        item_categories = asin_to_category.reindex(item_scores.index)
+        # 计算偏好
+        preferences = item_categories.apply(
+            lambda x: user_profile.get(str(int(x)), 0) if pd.notna(x) else 0)
+        adjusted_scores = item_scores * (1 + preferences.values)
+
         # 更新评分
-        item_scores = pd.Series(adjusted_scores, index=item_scores.index)
+        item_scores = pd.Series(adjusted_scores.values, index=item_scores.index)
         # 排序
         fine_ranked_items = item_scores.sort_values(ascending=False).index.tolist()
         return fine_ranked_items
@@ -321,7 +327,7 @@ def re_ranking(user_id, fine_ranked_items):
     preferred_categories = [int(cat) for cat, _ in preferred_categories]
     logging.info(f"Preferred categories: {preferred_categories}")
     # 获取商品的类别信息
-    item_categories = products.set_index('asin').reindex(fine_ranked_items)['category_id']
+    item_categories = asin_to_category.reindex(fine_ranked_items)
     logging.info(f"Item categories: {item_categories}")
     # 按照类别重排
     category_items = {}
@@ -583,7 +589,7 @@ def record_click(asin):
 def update_user_profile(user_id, asin):
     global user_profiles
     try:
-        category = products.set_index('asin').loc[asin]['category_id']
+        category = asin_to_category.get(asin)
     except KeyError:
         # 如果商品不存在或没有类别，直接返回
         return
@@ -607,7 +613,7 @@ def user_behavior_update(user_id, asin):
 
 # 定义一个函数，每日重训模型
 def retrain_model():
-    global user_item_matrix, user_item_sparse, decomposed_matrix, SVD
+    global user_item_matrix, user_item_sparse, decomposed_matrix, SVD, item_latent_vectors, asin_to_category
     print("Retraining model...")
     if user_clicks.empty:
         print("No user clicks data available.")
@@ -620,6 +626,12 @@ def retrain_model():
     # 重新训练SVD模型
     SVD = TruncatedSVD(n_components=20, random_state=42)
     decomposed_matrix = SVD.fit_transform(user_item_sparse)
+    # 更新 item_latent_vectors
+    item_latent_vectors = pd.DataFrame(SVD.components_.T, index=user_item_matrix.columns)
+    # 更新 asin_to_category，如果 products 有更新的话
+    global products
+    products = load_products()
+    asin_to_category = products.set_index('asin')['category_id']
     print("Model retraining completed.")
 
 
