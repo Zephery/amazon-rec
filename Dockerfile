@@ -7,6 +7,8 @@ WORKDIR /app
 # 拷贝前端代码到工作目录
 COPY ./ ./amazon-rec
 
+ENV NODE_ENV=prod
+
 # 构建 Vue 应用
 RUN cd amazon-rec \
     && npm config set registry https://registry.npmmirror.com \
