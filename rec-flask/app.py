@@ -1,7 +1,7 @@
 # app.py
-from flask import Flask
-from flask_cors import CORS
 import threading
+
+from flask_cors import CORS
 
 from database import check_db
 from model import retrain_model  # 从 model.py 导入 retrain_model
@@ -22,4 +22,4 @@ if __name__ == '__main__':
     scheduler_thread = threading.Thread(target=run_scheduler)
     scheduler_thread.start()
     # 运行 Flask 应用
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
