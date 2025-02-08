@@ -20,6 +20,8 @@ FROM nginx:latest
 # 设置默认工作目录
 WORKDIR /app
 
+ENV NODE_ENV=prod
+
 # 拷贝前端构建后的静态资源到 Nginx 网站目录
 COPY --from=frontend /app/amazon-rec/dist /usr/share/nginx/html
 
