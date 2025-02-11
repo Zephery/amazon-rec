@@ -3,7 +3,7 @@
 # 设置frp服务
 (
     cd /home/admin/frp_0.61.1_linux_amd64 || exit
-    nohup ./frpc -c frpc.toml > /dev/null 2>&1 &
+    nohup /home/admin/frp_0.61.1_linux_amd64/frpc -c /home/admin/frp_0.61.1_linux_amd64/frpc.toml > /dev/null 2>&1 &
 )
 
 # 设置amazon-rec的Flask服务
