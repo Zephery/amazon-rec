@@ -12,5 +12,6 @@
 # 设置frp服务
 (
     cd /home/admin/frp_0.61.1_linux_amd64 || exit
-    nohup /home/admin/frp_0.61.1_linux_amd64/frpc -c /home/admin/frp_0.61.1_linux_amd64/frpc.toml > /dev/null 2>&1 &
+    /usr/bin/nohup /home/admin/frp_0.61.1_linux_amd64/frpc -c /home/admin/frp_0.61.1_linux_amd64/frpc.toml > /home/admin/frp_0.61.1_linux_amd64/frpc.log 2>&1 &
 )
+
