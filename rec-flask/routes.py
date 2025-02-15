@@ -4,13 +4,13 @@ import time
 import pandas as pd
 import logging
 
-from db.database import conn, db_lock
-from service.model import products
-from service.algorithms import (
+from database import conn, db_lock
+from model import products, user_clicks
+from algorithms import (
     recall, coarse_ranking, fine_ranking,
     re_ranking, recommend_based_on_similar_users
 )
-from service.profiles import user_profiles, user_behavior_update, update_recommendations_after_click
+from profiles import user_profiles, user_behavior_update, update_recommendations_after_click
 
 def create_app():
     app = Flask(__name__)

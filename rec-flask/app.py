@@ -3,8 +3,8 @@ import threading
 
 from flask_cors import CORS
 
-from db.database import check_db
-from service.model import retrain_model  # 从 model.py 导入 retrain_model
+from database import check_db
+from model import retrain_model  # 从 model.py 导入 retrain_model
 from routes import create_app
 from scheduler import run_scheduler
 
