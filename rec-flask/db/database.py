@@ -11,12 +11,12 @@ logging.basicConfig(level=logging.INFO)
 
 # 数据库连接
 db_lock = threading.Lock()
-conn = sqlite3.connect('db/recommend.db', check_same_thread=False)
+conn = sqlite3.connect('recommend.db', check_same_thread=False)
 
 
 # 检查数据库是否存在
 def check_db():
-    if not os.path.exists("db/recommend.db"):
+    if not os.path.exists("recommend.db"):
         print("数据库不存在，初始化数据库...")
         initialize_database()
     else:

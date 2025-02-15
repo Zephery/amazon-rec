@@ -8,7 +8,7 @@ from scipy.sparse import csr_matrix
 from sklearn.decomposition import TruncatedSVD
 from sklearn.metrics.pairwise import cosine_similarity
 
-from database import load_products, load_user_clicks, load_user_reviews
+from db.database import load_products, load_user_clicks, load_user_reviews
 
 # 初始化 Redis 连接
 redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)

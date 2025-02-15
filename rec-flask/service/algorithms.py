@@ -6,12 +6,6 @@ import logging
 import redis
 import json
 
-from model import (
-    user_item_matrix, decomposed_matrix, item_latent_vectors, asin_to_category,
-    products, user_clicks
-)
-from profiles import user_profiles
-
 # 初始化 Redis 连接
 redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)
 

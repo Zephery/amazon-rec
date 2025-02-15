@@ -1,12 +1,9 @@
 # profiles.py
 import pandas as pd
-import logging
 import redis
 import json
 
-from model import asin_to_category
-from database import db_lock, conn
-from model import products
+from service.model import products
 
 # 初始化 Redis 连接
 redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)
@@ -37,7 +34,7 @@ def user_behavior_update(user_id, asin):
     redis_client.delete(f"recommendations:{user_id}")
 
 def update_recommendations_after_click(user_id, asin):
-    from algorithms import recall, coarse_ranking, fine_ranking, re_ranking
+    from service.algorithms import recall, coarse_ranking, fine_ranking, re_ranking
     # 更新用户画像
     update_user_profile(user_id, asin)
     # 立即生成新的推荐列表

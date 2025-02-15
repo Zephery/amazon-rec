@@ -1,11 +1,10 @@
 # model.py
 import pandas as pd
-import numpy as np
 from scipy.sparse import csr_matrix
 from sklearn.decomposition import TruncatedSVD
 import logging
 
-from database import load_products, load_user_clicks, load_user_reviews
+from db.database import load_products, load_user_clicks, load_user_reviews
 from utils import filter_high_activity, build_sparse_matrix
 
 # 全局变量
