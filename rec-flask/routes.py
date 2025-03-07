@@ -29,7 +29,7 @@ def create_app():
         q = request.args.get('q')
 
         if q:
-            data = products[products['title'].str.contains(q, case=False, na=False)].copy()
+            data = products[products['title'].str.contains(q, case=False, na=False, regex=True)].copy()
             total_items = len(data)
             total_pages = total_items // page_size + (1 if total_items % page_size > 0 else 0)
             start_idx = (page - 1) * page_size

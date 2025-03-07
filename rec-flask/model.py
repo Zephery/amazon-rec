@@ -1,11 +1,11 @@
 # model.py
-import pandas as pd
-import numpy as np
-from scipy.sparse import csr_matrix
-from sklearn.decomposition import TruncatedSVD
 import logging
 
-from database import load_products, load_user_clicks, load_user_reviews
+import pandas as pd
+from scipy.sparse import csr_matrix
+from sklearn.decomposition import TruncatedSVD
+
+from database import load_products, load_user_clicks, load_user_reviews, initialize_database
 from utils import filter_high_activity, build_sparse_matrix
 
 # 全局变量
@@ -18,12 +18,16 @@ asin_to_category = None
 
 # 限制数据规模的常量，可根据实际情况调整
 MAX_USERS = 10000  # 最多保留的用户数
-MAX_ITEMS = 5000   # 最多保留的商品数
+MAX_ITEMS = 5000  # 最多保留的商品数
 
 # 加载数据
-products = load_products()
-user_clicks = load_user_clicks()
-user_reviews = load_user_reviews()
+try:
+    products = load_products()
+    user_clicks = load_user_clicks()
+    user_reviews = load_user_reviews()
+except Exception as e:
+    initialize_database()
+
 
 def initialize_model_with_reviews(user_clicks, user_reviews, products):
     global user_item_matrix, user_item_sparse, decomposed_matrix, SVD, item_latent_vectors, asin_to_category
@@ -39,17 +43,18 @@ def initialize_model_with_reviews(user_clicks, user_reviews, products):
         return
 
     # 限制评论表规模，只保留高频用户和商品
-    user_reviews = filter_high_activity(user_reviews, user_col='user_id', item_col='asin', user_threshold=5, item_threshold=5)
+    user_reviews = filter_high_activity(user_reviews, user_col='user_id', item_col='asin', user_threshold=5,
+                                        item_threshold=5)
     user_reviews = user_reviews.head(MAX_USERS * MAX_ITEMS)  # 限制评论表的最大行数
 
     # 构建用户-商品交互稀疏矩阵
     user_ids = user_reviews['user_id'].unique()[:MAX_USERS]  # 保留最多 MAX_USERS 个用户
-    item_ids = user_reviews['asin'].unique()[:MAX_ITEMS]     # 保留最多 MAX_ITEMS 个商品
+    item_ids = user_reviews['asin'].unique()[:MAX_ITEMS]  # 保留最多 MAX_ITEMS 个商品
 
     # 加权评分
     user_reviews['rating_weighted'] = user_reviews['rating'] * \
-        (1 + 0.1 * user_reviews['verified_purchase']) * \
-        (1 + 0.05 * user_reviews['helpful_vote'].fillna(0))
+                                      (1 + 0.1 * user_reviews['verified_purchase']) * \
+                                      (1 + 0.05 * user_reviews['helpful_vote'].fillna(0))
 
     # 构建稀疏交互矩阵
     user_item_sparse = build_sparse_matrix(
@@ -74,8 +79,10 @@ def initialize_model_with_reviews(user_clicks, user_reviews, products):
     # 预先计算 asin_to_category
     asin_to_category = products.set_index('asin')['category_id']
 
+
 # 初始化模型
 initialize_model_with_reviews(user_clicks, user_reviews, products)
+
 
 # 定义一个函数，每日重训模型
 def retrain_model():
