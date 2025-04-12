@@ -4,7 +4,10 @@ import redis
 import json
 
 from app.service.model import products
-
+from app.service.model import (
+    user_item_matrix, decomposed_matrix, item_latent_vectors, asin_to_category,
+    products, user_clicks
+)
 # 初始化 Redis 连接
 redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)
 
@@ -12,7 +15,7 @@ redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)
 user_profiles = {}
 
 def update_user_profile(user_id, asin):
-    global user_profiles, asin_to_category
+    global user_profiles
     try:
         category = asin_to_category.get(asin)
     except KeyError:

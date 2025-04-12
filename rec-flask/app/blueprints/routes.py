@@ -1,16 +1,20 @@
 # routes.py
-from flask import Flask, request, jsonify
-import time
-import pandas as pd
 import logging
+import time
 
-from db.database import conn, db_lock
-from app.service.model import products
+import pandas as pd
+from flask import Flask, request, jsonify
+
 from app.service.algorithms import (
     recall, coarse_ranking, fine_ranking,
     re_ranking, recommend_based_on_similar_users
 )
+from app.service.model import products
 from app.service.profiles import user_profiles, user_behavior_update, update_recommendations_after_click
+from db.database import conn, db_lock
+
+user_clicks = pd.DataFrame(columns=['user_id', 'asin', 'click_time'])
+
 
 def create_app():
     app = Flask(__name__)
