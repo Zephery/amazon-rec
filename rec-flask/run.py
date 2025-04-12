@@ -1,12 +1,11 @@
-# app.py
 import threading
 
 from flask_cors import CORS
 
-from database import check_db
-from model import retrain_model  # 从 model.py 导入 retrain_model
-from routes import create_app
-from scheduler import run_scheduler
+from app.blueprints.routes import create_app
+from app.service.model import retrain_model  # 从 model.py 导入 retrain_model
+from app.tasks.scheduler import run_scheduler
+from db.database import check_db
 
 # 检查数据库
 check_db()

@@ -5,8 +5,8 @@ import pandas as pd
 from scipy.sparse import csr_matrix
 from sklearn.decomposition import TruncatedSVD
 
-from database import load_products, load_user_clicks, load_user_reviews, initialize_database
-from utils import filter_high_activity, build_sparse_matrix
+from db.database import load_products, load_user_clicks, load_user_reviews, initialize_database
+from app.utils.utils import filter_high_activity, build_sparse_matrix
 
 # 全局变量
 user_item_matrix = None
@@ -26,6 +26,7 @@ try:
     user_clicks = load_user_clicks()
     user_reviews = load_user_reviews()
 except Exception as e:
+    print(e)
     initialize_database()
 
 
