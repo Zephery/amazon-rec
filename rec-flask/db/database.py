@@ -54,6 +54,11 @@ def load_products():
     return pd.read_sql_query('SELECT * FROM amazon_products', conn)
 
 
+def load_categories():
+    query_categories = "SELECT * FROM amazon_categories"
+    return pd.read_sql_query(query_categories, conn)
+
+
 # 加载用户点击数据
 def load_user_clicks():
     # 从数据库中读取用户点击数据

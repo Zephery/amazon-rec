@@ -9,8 +9,10 @@ from app.service.algorithms import (
     recall, coarse_ranking, fine_ranking,
     re_ranking, recommend_based_on_similar_users
 )
+from app.service.front_page_scene import get_global_top_products
 from app.service.model import products
 from app.service.profiles import user_profiles, user_behavior_update, update_recommendations_after_click
+from app.service.search import search_products
 from db.database import conn, db_lock
 
 user_clicks = pd.DataFrame(columns=['user_id', 'asin', 'click_time'])
@@ -33,20 +35,7 @@ def create_app():
         q = request.args.get('q')
 
         if q:
-            data = products[products['title'].str.contains(q, case=False, na=False, regex=True)].copy()
-            total_items = len(data)
-            total_pages = total_items // page_size + (1 if total_items % page_size > 0 else 0)
-            start_idx = (page - 1) * page_size
-            end_idx = start_idx + page_size
-            data = data.iloc[start_idx:end_idx].to_dict(orient='records')
-            return jsonify({
-                'user_id': user_id,
-                'total': total_items,
-                'pages': total_pages,
-                'current_page': page,
-                'per_page': page_size,
-                'products': data
-            })
+            return search_products(products, user_id, q, page, page_size)
 
         # 优先使用用户画像生成推荐列表
         if user_id in user_profiles:
@@ -61,15 +50,11 @@ def create_app():
             final_recommendations = recommend_based_on_similar_users(user_id, top_n=500)
             if not final_recommendations or len(final_recommendations) == 0:
                 # 如果没有推荐结果，随机推荐商品
-                final_recommendations = products['asin'].sample(min(500, len(products))).tolist()
+                final_recommendations = get_global_top_products()
 
         if not final_recommendations:
             # 如果没有推荐结果，从数据库中随机抽取一些商品作为推荐
-            sample_size = min(page_size, len(products))
-            if sample_size > 0:
-                paged_recommendations = products['asin'].sample(sample_size).tolist()
-            else:
-                return jsonify({'message': 'No products available for sampling.'}), 404
+            paged_recommendations = get_global_top_products()
             total_items = len(paged_recommendations)
             total_pages = 1  # 因为我们只返回了一页的随机商品
         else:

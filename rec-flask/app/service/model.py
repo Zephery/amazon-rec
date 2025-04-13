@@ -5,8 +5,8 @@ import pandas as pd
 from scipy.sparse import csr_matrix
 from sklearn.decomposition import TruncatedSVD
 
-from db.database import load_products, load_user_clicks, load_user_reviews, initialize_database
 from app.utils.utils import filter_high_activity, build_sparse_matrix
+from db.database import load_products, load_user_clicks, load_user_reviews, initialize_database, load_categories
 
 # 全局变量
 user_item_matrix = None
@@ -24,7 +24,8 @@ MAX_ITEMS = 5000  # 最多保留的商品数
 try:
     products = load_products()
     user_clicks = load_user_clicks()
-    user_reviews = load_user_reviews()
+    reviews = load_user_reviews()
+    categories = load_categories()
 except Exception as e:
     print(e)
     initialize_database()
@@ -82,7 +83,7 @@ def initialize_model_with_reviews(user_clicks, user_reviews, products):
 
 
 # 初始化模型
-initialize_model_with_reviews(user_clicks, user_reviews, products)
+initialize_model_with_reviews(user_clicks, reviews, products)
 
 
 # 定义一个函数，每日重训模型
