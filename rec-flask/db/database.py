@@ -51,7 +51,7 @@ create_tables()
 
 # 加载商品数据
 def load_products():
-    return pd.read_sql_query('SELECT * FROM amazon_products', conn)
+    return pd.read_sql_query('SELECT * FROM amazon_products limit 500000', conn)
 
 
 def load_categories():

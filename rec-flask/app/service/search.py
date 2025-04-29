@@ -1,9 +1,12 @@
+import math
+
+import pandas as pd
 from flask import jsonify
 
 
 def search_products(products, user_id, q, page=1, page_size=100):
     """
-    搜索商品并返回精准结果，结合矢量化相关性评分和分页逻辑。
+    搜索商品并返回精准结果，结合矢量化相关性评分和分页逻辑进行性能优化。
     :param products: pd.DataFrame, 商品数据
     :param user_id: str, 发起搜索的用户ID
     :param q: str, 搜索关键字
@@ -11,65 +14,102 @@ def search_products(products, user_id, q, page=1, page_size=100):
     :param page_size: int, 每页数量
     :return: JSON 响应，包含用户数据、分页数据和商品列表
     """
-    import math
-
     # 数据有效性检查
     if page < 1:
         page = 1
     if page_size < 1:
         page_size = 10
 
-    # 转换搜索关键字为小写进行统一处理
-    q_lower = q.lower() if q else ""
+    # 提前返回空查询（无关键词）
+    if not q or not products.size:
+        return jsonify({
+            "user_id": user_id,
+            "query": q,
+            "total": 0,
+            "pages": 0,
+            "current_page": page,
+            "per_page": page_size,
+            "products": []
+        })
 
-    # 精准关键词匹配：检查关键词是否出现在标题中
+    # 转换搜索关键字为小写进行统一处理
+    q_lower = q.lower().strip()
+
+    # --- Step 1: 精选相关商品（矢量化处理更高效） ---
+    # 精准关键词匹配（为提高效率，用矢量化计算）
     title_match = products['title'].str.contains(q_lower, case=False, na=False).astype(int) * 10
 
-    # 开头匹配：检查标题是否以关键词开头
+    # 开头匹配：检查标题是否以关键词开头（矢量化）
     title_start_match = products['title'].str.startswith(q_lower, na=False).astype(int) * 5
 
-    # 分类匹配：检查关键词是否出现在分类字段中（如果存在分类）
+    # 分类匹配（防止数据集缺少字段时出错）
     if 'category_name' in products.columns:
         category_match = products['category_name'].str.contains(q_lower, case=False, na=False).astype(int) * 2
     else:
-        category_match = 0
+        category_match = pd.Series(0, index=products.index)
 
     # 计算相关性评分
-    products['relevance_score'] = title_match + title_start_match + category_match
+    relevance_score = title_match + title_start_match + category_match
 
-    # 过滤没有相关性的商品
-    filtered_data = products[products['relevance_score'] > 0]
+    # 过滤掉无相关性的商品
+    products = products[relevance_score > 0]
+    products = products.copy()  # 避免链式赋值警告
+    products['relevance_score'] = relevance_score
 
-    # 排除配件商品（通过关键词排除不相关商品）
+    # --- Step 2: 排除配件类商品 ---
+    # 跳过与配件（case, protector, keyboard 等）相关的商品
     excluded_keywords = ['case', 'cover', 'protector', 'keyboard', 'adapter']
-    filtered_data = filtered_data[
-        ~filtered_data['title'].str.lower().str.contains('|'.join(excluded_keywords), na=False, regex=True)]
+    products = products[
+        ~products['title'].str.lower().str.contains('|'.join(excluded_keywords), na=False, regex=True)
+    ]
 
-    # 按相关性评分降序排序
-    filtered_data = filtered_data.sort_values(by='relevance_score', ascending=False)
+    # --- Step 3: 排序（按相关性+畅销+评分） ---
+    if 'isBestSeller' in products.columns:
+        bestseller_score = products['isBestSeller'].fillna(0).astype(int) * 5
+    else:
+        bestseller_score = pd.Series(0, index=products.index)
 
-    # 总商品数量
-    total_items = len(filtered_data)
+    if 'stars' in products.columns:
+        review_score = products['stars'].fillna(0)  # 防止缺失值
+    else:
+        review_score = pd.Series(0, index=products.index)
 
-    # 总页数
-    total_pages = math.ceil(total_items / page_size)
+    # 最终得分计算
+    products['final_score'] = products['relevance_score'] + bestseller_score + review_score
 
-    # 确保页码不超过总页数
+    # 按得分排序
+    products = products.sort_values(by='final_score', ascending=False)
+
+    # --- Step 4: 分页处理 ---
+    total_items = len(products)  # 总商品数
+    total_pages = math.ceil(total_items / page_size)  # 总页数
+
+    # 确保页码在有效范围内
+    if total_items == 0:
+        return jsonify({
+            "user_id": user_id,
+            "query": q,
+            "total": 0,
+            "pages": 0,
+            "current_page": page,
+            "per_page": page_size,
+            "products": []
+        })
+
     if page > total_pages:
-        page = total_pages if total_pages > 0 else 1
+        page = total_pages
 
-    # 确定分页索引
     start_idx = (page - 1) * page_size
     end_idx = start_idx + page_size
 
-    # 获取当前页的数据并格式化输出
-    page_data = filtered_data.iloc[start_idx:end_idx]
+    # 当前页商品
+    page_data = products.iloc[start_idx:end_idx]
 
-    # 仅返回需要的字段
-    formatted_data = page_data[['asin', 'title', 'price', 'imgUrl', 'productURL', 'relevance_score']].to_dict(
-        orient='records')
+    # --- Step 5: 格式化输出 ---
+    formatted_data = page_data[
+        ['asin', 'title', 'price', 'imgUrl', 'productURL', 'final_score', 'stars', 'reviews', 'listPrice',
+         'category_id']].to_dict(orient='records')
 
-    # 返回 JSON 响应
     response = {
         "user_id": user_id,
         "query": q,
