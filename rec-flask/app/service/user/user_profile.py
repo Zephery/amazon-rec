@@ -73,6 +73,7 @@ def infer_age(user_data):
     else:
         return "50+"
 
+
 # 性别推测
 def infer_gender(user_data):
     """

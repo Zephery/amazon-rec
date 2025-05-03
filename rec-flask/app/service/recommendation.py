@@ -1,9 +1,9 @@
 # recommendation.py
 import logging
 
+import fakeredis
 import numpy as np
 import pandas as pd
-import redis
 from scipy.sparse import csr_matrix
 from sklearn.decomposition import TruncatedSVD
 from sklearn.metrics.pairwise import cosine_similarity
@@ -11,7 +11,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from db.database import load_products, load_user_clicks, load_user_reviews
 
 # 初始化 Redis 连接
-redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)
+redis_client = fakeredis.FakeStrictRedis()
 
 # 全局变量
 user_item_matrix = None
@@ -197,6 +197,7 @@ def recall(user_id, top_n=500):
         candidate_items = [item_ids[idx] for idx in candidate_items_indices if idx not in user_interacted_set]
 
         return candidate_items[:top_n]
+
 
 # 其他函数需要根据稀疏矩阵的使用，进行类似的修改。
 

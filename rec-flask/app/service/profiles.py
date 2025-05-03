@@ -1,18 +1,20 @@
 # profiles.py
-import pandas as pd
-import redis
 import json
 
-from app.service.model import products
+import fakeredis
+import pandas as pd
+
 from app.service.model import (
-    user_item_matrix, decomposed_matrix, item_latent_vectors, asin_to_category,
-    products, user_clicks
+    asin_to_category,
+    products
 )
+
 # 初始化 Redis 连接
-redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)
+redis_client = fakeredis.FakeStrictRedis()
 
 # 全局变量
 user_profiles = {}
+
 
 def update_user_profile(user_id, asin):
     global user_profiles
@@ -30,11 +32,13 @@ def update_user_profile(user_id, asin):
         user_profile[cat] /= total  # 重新归一化偏好程度
     user_profiles[user_id] = user_profile
 
+
 def user_behavior_update(user_id, asin):
     # 更新用户画像
     update_user_profile(user_id, asin)
     # 清除缓存
     redis_client.delete(f"recommendations:{user_id}")
+
 
 def update_recommendations_after_click(user_id, asin):
     from app.service.algorithms import recall, coarse_ranking, fine_ranking, re_ranking

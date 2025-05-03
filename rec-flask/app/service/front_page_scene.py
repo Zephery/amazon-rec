@@ -79,24 +79,37 @@ products = products.sort_values(by='score', ascending=False)
 # -----------------------------------------------
 
 # 全局热门商品推荐函数
-def get_global_top_products(limit=50):
+def get_global_top_products(limit=500, randomize=True):
     """
     获取综合评分最高的商品 ASIN 列表。
 
     :param limit: int, 返回的商品数量
-    :return: list, 按评分排序的商品 ASIN 列表
+    :param randomize: bool, 是否启用随机化逻辑，默认启用
+    :return: list, 推荐的商品 ASIN 列表
     """
-    # 确保数据已排序
-    sorted_products = products.sort_values(by='score', ascending=False)
+    # 如果不启用随机化逻辑，直接返回前 `limit` 个商品
+    if not randomize:
+        return products['asin'].head(limit).tolist()
 
-    # 返回前 `limit` 个商品的 ASIN 列表
-    return sorted_products['asin'].head(limit).tolist()
+    # 启用随机化逻辑：基于综合评分进行加权采样
+    sorted_products = products.copy()
+    sorted_products['sampling_weight'] = sorted_products['score'] / sorted_products['score'].sum()
+
+    # 基于权重抽样，避免每次返回完全相同
+    sampled_products = sorted_products.sample(
+        n=limit,
+        weights='sampling_weight',
+        random_state=np.random.randint(0, 10000)  # 确保每次调用的随机性
+    )
+
+    # 返回采样后的商品 ASIN 列表
+    return sampled_products['asin'].tolist()
 
 
 # 模拟调用逻辑：获取全局热门商品
 if __name__ == "__main__":
-    # 调用热门商品推荐函数
-    top_asins = get_global_top_products(limit=10)
+    # 调用热门商品推荐函数（启用随机化）
+    top_asins = get_global_top_products(limit=10, randomize=True)
 
     # 输出结果
     print(f"热门商品的 ASIN 列表（前 10 个）: {top_asins}")

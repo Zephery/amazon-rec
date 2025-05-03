@@ -1,23 +1,20 @@
 # algorithms.py
-import pandas as pd
-import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
-import logging
-import redis
 import json
+import logging
 
-from app.service.model import (
-    user_item_matrix, decomposed_matrix, item_latent_vectors, asin_to_category,
-    products, user_clicks
-)
-from app.service.profiles import user_profiles
+import fakeredis
+import numpy as np
+import pandas as pd
+from sklearn.metrics.pairwise import cosine_similarity
+
+from app.service.recommendation import user_clicks, products, user_item_matrix, decomposed_matrix, item_latent_vectors, \
+    asin_to_category
 
 # 初始化 Redis 连接
-redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)
+redis_client = fakeredis.FakeStrictRedis()
+
 
 def recall(user_id, top_n=500):
-    global user_item_matrix, decomposed_matrix, user_clicks, products
-
     if user_item_matrix is None or decomposed_matrix is None:
         # 模型尚未训练或无数据，返回空列表
         logging.warning("User-item matrix or decomposed matrix is not available.")
@@ -59,9 +56,8 @@ def recall(user_id, top_n=500):
 
         return candidate_items[:top_n]
 
-def coarse_ranking(candidate_items):
-    global user_clicks, products
 
+def coarse_ranking(candidate_items):
     if not candidate_items:
         # 如果候选列表为空，返回全站最热门的商品
         item_popularity = user_clicks['asin'].value_counts()
@@ -77,10 +73,8 @@ def coarse_ranking(candidate_items):
         ranked_items = candidate_items
     return ranked_items
 
-def fine_ranking(user_id, ranked_items):
-    global user_item_matrix, decomposed_matrix, item_latent_vectors, asin_to_category
-    global user_profiles
 
+def fine_ranking(user_id, ranked_items):
     if user_item_matrix is None or decomposed_matrix is None:
         # 模型尚未训练或无数据，直接返回粗排结果
         return ranked_items
@@ -116,8 +110,8 @@ def fine_ranking(user_id, ranked_items):
         fine_ranked_items = item_scores.sort_values(ascending=False).index.tolist()
         return fine_ranked_items
 
+
 def re_ranking(user_id, fine_ranked_items):
-    global user_profiles, asin_to_category
     user_profile = user_profiles.get(user_id, {})
     logging.info(f"User profile for {user_id}: {user_profile}")
     if not user_profile:
@@ -176,6 +170,7 @@ def re_ranking(user_id, fine_ranked_items):
 
     return final_ranked_items
 
+
 def recommend_based_on_similar_users(user_id, top_n=20):
     """
     基于相似用户生成推荐列表
@@ -207,11 +202,11 @@ def recommend_based_on_similar_users(user_id, top_n=20):
 
     return candidate_items[:top_n]
 
+
 def get_similar_users(user_id, top_k=5):
     """
     找到与当前用户最相似的前 top_k 个用户
     """
-    global user_item_matrix, decomposed_matrix
 
     if user_item_matrix is None or decomposed_matrix is None:
         return []
@@ -231,6 +226,7 @@ def get_similar_users(user_id, top_k=5):
     similar_users = user_item_matrix.index[similar_users_indices]
 
     return similar_users.tolist()
+
 
 def get_offline_recommendations(user_id):
     cached_recommendations = redis_client.get(f"recommendations:{user_id}")
