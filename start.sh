@@ -10,7 +10,7 @@ docker run --name amazon-rec -d -p 80:80 -p 443:443  amazon-rec
 
 
 (
-    cd /home/admin/frp_0.61.1_linux_amd64 || exit
+    cd /root/frp_0.61.1_linux_amd64 || exit
     nohup ./frps -c frps.toml > /dev/null 2>&1 &
 )
 
