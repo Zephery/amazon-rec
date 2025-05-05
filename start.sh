@@ -7,6 +7,9 @@ docker build . -t amazon-rec
 
 docker run --name amazon-rec -d -p 80:80 -p 443:443  amazon-rec
 
+
+nohup /root/frp_0.61.1_linux_amd64/frps -c /root/frp_0.61.1_linux_amd64/frps.toml > /dev/null 2>&1
+
 #
 #docker stop $(docker ps -a | grep "rec-flask" | awk '{print $1 }')
 #docker rm $(docker ps -a | grep "rec-flask" | awk '{print $1 }')
