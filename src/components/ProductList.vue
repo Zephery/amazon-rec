@@ -14,6 +14,7 @@
           <template v-slot:append>
             <v-btn color="primary" @click="handleSearch" class="search-button">搜索</v-btn>
 
+            <v-btn color="green" @click="viewBrowsingHistory" class="clear-history-button ml-2">浏览记录</v-btn>
             <v-btn color="red" @click="clearBrowsingHistory" class="clear-history-button ml-2">清理浏览记录</v-btn>
           </template>
         </v-text-field>
@@ -95,6 +96,10 @@ export default {
   },
 
   methods: {
+    // 跳转到浏览记录页面
+    viewBrowsingHistory() {
+      this.$router.push({ name: 'BrowsingHistory' });
+    },
     setupInfiniteScroll() {
       this.observer = new IntersectionObserver(
           (entries) => {

@@ -13,6 +13,7 @@ from app.service.front_page_scene import get_global_top_products
 from app.service.model import products
 from app.service.profiles import user_profiles, user_behavior_update, update_recommendations_after_click
 from app.service.search import search_products
+from app.service.view_history import get_clicks_history
 from db.database import conn, db_lock
 
 user_clicks = pd.DataFrame(columns=['user_id', 'asin', 'click_time'])
@@ -25,6 +26,11 @@ def create_app():
     @app.route('/')
     def index():
         return "ok"
+
+    @app.route('/get_clicks')
+    def get_clicks():
+        user_id = request.remote_addr  # 使用请求的IP地址作为用户ID
+        return get_clicks_history(user_id)
 
     # 推荐商品列表接口
     @app.route('/products', methods=['GET'])

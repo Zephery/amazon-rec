@@ -37,12 +37,16 @@ def initialize_database():
 def create_tables():
     with conn:
         conn.execute('''
-            CREATE TABLE IF NOT EXISTS user_clicks (
-                user_id TEXT,
-                asin TEXT,
-                click_time TIMESTAMP
-            )
-        ''')
+                     CREATE TABLE IF NOT EXISTS user_clicks
+                     (
+                         user_id
+                         TEXT,
+                         asin
+                         TEXT,
+                         click_time
+                         TIMESTAMP
+                     )
+                     ''')
 
 
 # 在模块加载时创建表
@@ -68,3 +72,7 @@ def load_user_clicks():
 # 加载用户评论数据
 def load_user_reviews():
     return pd.read_sql_query('SELECT * FROM amazon_reviews', conn)
+
+
+def execute_query(sql, args):
+    return pd.read_sql_query(sql, conn, params=args)
