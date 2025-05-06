@@ -14,7 +14,7 @@ from app.service.model import products
 from app.service.profiles import user_profiles, user_behavior_update, update_recommendations_after_click
 from app.service.search import search_products
 from app.service.view_history import get_clicks_history
-from db.database import conn, db_lock
+from db.database import conn, db_lock, delete_user_clicks
 
 user_clicks = pd.DataFrame(columns=['user_id', 'asin', 'click_time'])
 
@@ -31,6 +31,13 @@ def create_app():
     def get_clicks():
         user_id = request.remote_addr  # 使用请求的IP地址作为用户ID
         return get_clicks_history(user_id)
+
+    @app.route('/clear_clicks', methods=['DELETE'])
+    def clear_clicks():
+        user_id = request.remote_addr  # 使用请求的IP地址作为用户ID
+
+        delete_user_clicks(user_id)
+        return jsonify({"ok": True})
 
     # 推荐商品列表接口
     @app.route('/products', methods=['GET'])
@@ -50,7 +57,9 @@ def create_app():
                 candidates = products['asin'].sample(min(500, len(products))).tolist()
             coarse_ranked = coarse_ranking(candidates)
             fine_ranked = fine_ranking(user_id, coarse_ranked)
-            final_recommendations = re_ranking(user_id, fine_ranked)
+            # TODO 这里还有问题，先注释
+            # final_recommendations = re_ranking(user_id, fine_ranked)
+            final_recommendations = []
         else:
             # 如果用户画像不存在，使用相似用户生成推荐列表
             final_recommendations = recommend_based_on_similar_users(user_id, top_n=500)

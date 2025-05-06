@@ -31,7 +31,7 @@ def get_clicks_history(user_id):
     # 格式化返回的数据
     formatted_data = page_data[
         ['asin', 'title', 'price', 'imgUrl', 'productURL', 'stars', 'reviews', 'listPrice',
-         'category_id']].to_dict(orient='records')
+         'category_id','click_time']].to_dict(orient='records')
 
     response = {
         "products": formatted_data

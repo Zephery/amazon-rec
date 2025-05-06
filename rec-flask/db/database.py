@@ -76,3 +76,21 @@ def load_user_reviews():
 
 def execute_query(sql, args):
     return pd.read_sql_query(sql, conn, params=args)
+
+def delete_user_clicks(user_id):
+    try:
+        # 获取数据库连接的游标
+        cursor = conn.cursor()
+
+        # 执行 DELETE 语句
+        query = "DELETE FROM user_clicks WHERE user_id = ?"
+        cursor.execute(query, (user_id,))
+
+        # 提交更改
+        conn.commit()
+
+        return f"Deleted clicks for user_id: {user_id} successfully."
+    except Exception as e:
+        # 捕获并打印错误
+        print("Error deleting user clicks:", e)
+        return f"Error deleting clicks: {e}"

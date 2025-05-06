@@ -1,54 +1,77 @@
 <template>
   <v-container>
+    <!-- 顶部标题和返回按钮 -->
     <v-row>
-      <v-col cols="12" class="text-center mb-4">
-        <h1 class="mb-3">Browsing History</h1>
+      <v-col cols="12" class="d-flex align-center justify-start mb-4">
+        <v-btn
+            class="back-button mr-3"
+            color="primary"
+            dark
+            elevation="2"
+            @click="$router.go(-1)"
+        >← Back</v-btn>
+        <h1 class="mb-0">Browsing History</h1>
       </v-col>
     </v-row>
 
-    <div class="product-grid">
-      <v-card
-          v-for="product in browsingHistory"
-          :key="product.asin"
-          class="product-card"
-          @click="viewProductDetail(product.asin)"
-      >
-        <div class="product-image-container">
-          <img
-              :src="product.imgUrl"
-              :alt="product.title"
-              class="product-image"
-              @error="handleImageError($event, product.asin)"
-          />
-        </div>
-        <v-card-text class="product-info pa-4">
-          <div class="product-title mb-2">{{ product.title }}</div>
-          <div class="price-section mb-2">
-            <span class="currency">$</span>
-            <span class="price">{{ product.price }}</span>
-          </div>
-          <div class="rating-section mb-2">
-            <span class="stars" v-html="product.stars"></span>
-            <span class="review-count">({{ product.reviews }})</span>
-          </div>
-        </v-card-text>
-      </v-card>
+    <!-- 加载状态提示 -->
+    <div v-if="loading" class="loading-container">
+      <div class="spinner"></div>
+      <p>Loading data, please wait...</p>
     </div>
 
-    <div v-if="!browsingHistory.length" class="text-center my-4">
-      <p>You haven't browsed any products yet!</p>
+    <!-- 浏览记录展示 -->
+    <div v-else>
+      <div class="product-list">
+        <v-card
+            v-for="product in browsingHistory"
+            :key="product.asin"
+            class="product-list-item"
+            @click="viewProductDetail(product.asin)"
+        >
+          <div class="product-list-container">
+            <img
+                :src="product.imgUrl"
+                :alt="product.title"
+                class="product-image"
+                @error="handleImageError($event, product.asin)"
+            />
+            <v-card-text class="product-info">
+              <div class="product-title">{{ product.title }}</div>
+              <div class="click-time">
+                <span>Clicked on:</span>
+                <span>{{ formatTimestamp(product.click_time) }}</span>
+              </div>
+              <div class="price-section">
+                <span class="currency">$</span>
+                <span class="price">{{ product.price }}</span>
+              </div>
+              <div class="rating-section">
+                <span class="stars" v-html="product.stars"></span>
+                <span class="review-count">({{ product.reviews }})</span>
+              </div>
+            </v-card-text>
+          </div>
+        </v-card>
+      </div>
+
+      <!-- 无数据提示 -->
+      <div v-if="!browsingHistory.length" class="text-center my-4">
+        <p>You haven't browsed any products yet!</p>
+      </div>
     </div>
   </v-container>
 </template>
 
 <script>
 import axios from "axios";
-import {HTTP_REQUEST_URL} from "../../config/app.js";
+import { HTTP_REQUEST_URL } from "../../config/app.js";
 
 export default {
   data() {
     return {
       browsingHistory: [],
+      loading: false, // 用于控制加载动画的显示
     };
   },
 
@@ -59,11 +82,17 @@ export default {
   methods: {
     async loadBrowsingHistory() {
       try {
-        // 从后端获取浏览记录
-        const response = await axios.get(HTTP_REQUEST_URL+"/get_clicks");
+        // 开启加载状态
+        this.loading = true;
+
+        // 模拟接口调用
+        const response = await axios.get(HTTP_REQUEST_URL + "/get_clicks");
         this.browsingHistory = response.data.products || [];
       } catch (error) {
         console.error("Failed to fetch browsing history:", error);
+      } finally {
+        // 请求结束后关闭加载状态
+        this.loading = false;
       }
     },
 
@@ -74,82 +103,147 @@ export default {
     handleImageError(event, asin) {
       event.target.src = "https://via.placeholder.com/200"; // Fallback image
     },
+
+    formatTimestamp(timestamp) {
+      const date = new Date(timestamp * 1000);
+      const yyyy = date.getFullYear();
+      const MM = String(date.getMonth() + 1).padStart(2, "0");
+      const dd = String(date.getDate()).padStart(2, "0");
+      const HH = String(date.getHours()).padStart(2, "0");
+      const mm = String(date.getMinutes()).padStart(2, "0");
+      const ss = String(date.getSeconds()).padStart(2, "0");
+      return `${yyyy}-${MM}-${dd} ${HH}:${mm}:${ss}`;
+    },
   },
 };
 </script>
-
 <style scoped>
-/* 重用与主页面相同的样式 */
-.product-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 20px;
-  padding: 20px 0;
+/* 返回按钮样式 */
+.back-button {
+  font-size: 16px;
+  padding: 8px 16px;
+  border-radius: 25px;
+  background-color: #007bff;
+  color: #ffffff;
+  text-transform: none;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
 }
 
-.product-card {
-  border-radius: 8px;
-  transition: all 0.3s;
-  height: 100%;
+.back-button:hover {
+  background-color: #0056b3;
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.2);
+  transform: translateY(-2px);
+}
+
+.back-button:active {
+  background-color: #004080;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  transform: translateY(0);
+}
+
+/* 加载状态样式 */
+.loading-container {
   display: flex;
   flex-direction: column;
-  cursor: pointer;
-}
-
-.product-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
-}
-
-.product-image-container {
-  height: 200px;
-  width: 100%;
-  padding: 20px;
-  background: #fff;
-  display: flex;
   align-items: center;
   justify-content: center;
+  padding: 20px;
+}
+
+.spinner {
+  border: 6px solid #f3f3f3; /* 灰色外圈 */
+  border-top: 6px solid #007bff; /* 蓝色转动部分 */
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-container p {
+  font-size: 14px;
+  margin-top: 10px;
+  color: #666;
+}
+
+/* 产品列表样式 */
+.product-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.product-list-item {
+  display: flex;
+  flex-direction: row;
+  padding: 16px;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+.product-list-item:hover {
+  transform: translateY(-2px);
+}
+
+.product-list-container {
+  display: flex;
+  gap: 15px;
+  align-items: center;
 }
 
 .product-image {
-  max-width: 100%;
-  max-height: 100%;
+  width: 120px;
+  height: 120px;
   object-fit: contain;
-  width: auto;
-  height: auto;
-}
-
-.product-card:hover .product-image {
-  transform: scale(1.05);
+  border-radius: 8px;
+  background: #f4f4f4;
 }
 
 .product-info {
-  flex-grow: 1;
+  flex: 1;
   display: flex;
   flex-direction: column;
 }
 
-.product-title {
+.click-time {
   font-size: 14px;
-  line-height: 1.4;
-  height: 40px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.click-time span {
+  font-weight: bold;
+}
+
+.product-title {
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 8px;
   color: #333;
+  line-height: 1.4;
 }
 
 .price-section {
-  color: #e4393c;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: bold;
+  color: #e4393c;
+  margin-bottom: 8px;
 }
 
 .currency {
   font-size: 14px;
-  margin-right: 2px;
+  margin-right: 4px;
 }
 
 .rating-section {
@@ -167,3 +261,4 @@ export default {
   font-size: 12px;
 }
 </style>
+

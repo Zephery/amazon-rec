@@ -8,7 +8,7 @@ import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 
 from app.service.recommendation import user_clicks, products, user_item_matrix, decomposed_matrix, item_latent_vectors, \
-    asin_to_category
+    asin_to_category,user_profiles
 
 # 初始化 Redis 连接
 redis_client = fakeredis.FakeStrictRedis()
