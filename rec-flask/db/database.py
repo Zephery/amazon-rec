@@ -13,7 +13,6 @@ logging.basicConfig(level=logging.INFO)
 db_lock = threading.Lock()
 conn = sqlite3.connect('db/recommend.db', check_same_thread=False)
 
-
 # 检查数据库是否存在
 def check_db():
     if not os.path.exists("db/recommend.db"):
@@ -21,6 +20,7 @@ def check_db():
         initialize_database()
     else:
         print("数据库存在，启动应用...")
+    create_indexes()
 
 
 # 调用其他 Python 文件生成数据库（假设这些文件在db目录中）
@@ -77,6 +77,7 @@ def load_user_reviews():
 def execute_query(sql, args):
     return pd.read_sql_query(sql, conn, params=args)
 
+
 def delete_user_clicks(user_id):
     try:
         # 获取数据库连接的游标
@@ -94,3 +95,18 @@ def delete_user_clicks(user_id):
         # 捕获并打印错误
         print("Error deleting user clicks:", e)
         return f"Error deleting clicks: {e}"
+
+
+def create_indexes():
+    try:
+        with conn:
+            # 创建索引时使用 IF NOT EXISTS 确保安全
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_user_clicks_user_id ON user_clicks(user_id);')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_user_clicks_asin ON user_clicks(asin);')
+            conn.execute(
+                'CREATE INDEX IF NOT EXISTS idx_user_clicks_user_id_click_time ON user_clicks(user_id, click_time DESC);')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_amazon_products_asin ON amazon_products(asin);')
+
+        logging.info("Indexes created successfully, or already exist.")
+    except Exception as e:
+        logging.error(f"Error while creating indexes: {e}")

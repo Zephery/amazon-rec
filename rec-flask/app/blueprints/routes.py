@@ -7,7 +7,7 @@ from flask import Flask, request, jsonify
 
 from app.service.algorithms import (
     recall, coarse_ranking, fine_ranking,
-    re_ranking, recommend_based_on_similar_users
+    recommend_based_on_similar_users
 )
 from app.service.front_page_scene import get_global_top_products
 from app.service.model import products
@@ -83,7 +83,8 @@ def create_app():
         if not paged_recommendations:
             return jsonify({'message': 'No products to recommend.'}), 404
         recommended_products = products[products['asin'].isin(paged_recommendations)].to_dict(orient='records')
-
+        if len(recommended_products) > page_size:
+            recommended_products = recommended_products[:page_size]
         return jsonify({
             'user_id': user_id,
             'total': total_items,
