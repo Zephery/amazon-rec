@@ -10,13 +10,16 @@ from app.service.algorithms import (
     recommend_based_on_similar_users
 )
 from app.service.front_page_scene import get_global_top_products
-from app.service.model import products
-from app.service.profiles import user_profiles, user_behavior_update, update_recommendations_after_click
+from app.service.recommendation import products
 from app.service.search import search_products
+from app.service.user.user_profile import user_profiles, user_behavior_update, update_recommendations_after_click, \
+    get_user_profile_detail
 from app.service.view_history import get_clicks_history
 from db.database import conn, db_lock, delete_user_clicks
 
 user_clicks = pd.DataFrame(columns=['user_id', 'asin', 'click_time'])
+
+sqlite_path = 'db/recommend.db'
 
 
 def create_app():
@@ -38,6 +41,25 @@ def create_app():
 
         delete_user_clicks(user_id)
         return jsonify({"ok": True})
+
+    @app.route('/get_user_profile', methods=['GET'])
+    def get_user_profile():
+        user_id = request.remote_addr
+        result = get_user_profile_detail(user_id)
+        decoded_data = decode_bytes(result)
+
+        return jsonify(decoded_data)
+
+    def decode_bytes(data):
+        if isinstance(data, dict):
+            return {decode_bytes(key): decode_bytes(value) for key, value in data.items()}
+        elif isinstance(data, list):
+            return [decode_bytes(item) for item in data]
+        elif isinstance(data, tuple):
+            return tuple(decode_bytes(item) for item in data)
+        elif isinstance(data, bytes):
+            return data.decode('utf-8')
+        return data
 
     # 推荐商品列表接口
     @app.route('/products', methods=['GET'])

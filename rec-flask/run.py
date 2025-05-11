@@ -3,9 +3,10 @@ import threading
 from flask_cors import CORS
 
 from app.blueprints.routes import create_app
-from app.service.model import retrain_model  # 从 model.py 导入 retrain_model
+from app.service.recommendation import retrain_model
+from app.service.user.user_profile import init_user_profile
 from app.tasks.scheduler import run_scheduler
-from db.database import check_db
+from db.database import check_db, initialize_database
 
 # 检查数据库
 check_db()
@@ -13,10 +14,13 @@ check_db()
 # 创建 Flask 应用
 app = create_app()
 CORS(app)
+retrain_model()
+init_user_profile()
+
 
 if __name__ == '__main__':
     # 在应用启动时重新训练模型
-    retrain_model()
+
     # 启动调度器线程
     scheduler_thread = threading.Thread(target=run_scheduler)
     scheduler_thread.start()

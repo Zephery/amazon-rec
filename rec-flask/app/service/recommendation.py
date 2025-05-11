@@ -8,7 +8,7 @@ from scipy.sparse import csr_matrix
 from sklearn.decomposition import TruncatedSVD
 from sklearn.metrics.pairwise import cosine_similarity
 
-from db.database import load_products, load_user_clicks, load_user_reviews
+from db.database import load_products, load_user_clicks, load_user_reviews, load_categories, initialize_database
 
 # 初始化 Redis 连接
 redis_client = fakeredis.FakeStrictRedis()
@@ -26,9 +26,15 @@ item_ids = None
 model_initialized = False
 
 # 加载数据
-products = load_products()
-user_clicks = load_user_clicks()
-user_reviews = load_user_reviews()
+try:
+    products = load_products()
+    user_clicks = load_user_clicks()
+    reviews = load_user_reviews()
+    categories = load_categories()
+except Exception as e:
+    print(e)
+    initialize_database()
+
 
 
 # 示例函数：过滤数据量
@@ -206,7 +212,8 @@ def recall(user_id, top_n=500):
 
 # 定义一个函数，每日重训模型
 def retrain_model():
-    global user_item_matrix, user_item_sparse, decomposed_matrix, SVD, item_latent_vectors, asin_to_category, products, user_clicks, user_reviews
+    global user_item_matrix, user_item_sparse, decomposed_matrix, SVD, item_latent_vectors, asin_to_category
+    global products, user_clicks, user_reviews
     print("Retraining model...")
     # 重新加载数据
     products = load_products()
@@ -220,9 +227,23 @@ def retrain_model():
     # 重新构建用户-商品交互矩阵
     user_item_matrix = user_clicks.groupby(['user_id', 'asin']).size().unstack(fill_value=0)
     user_item_sparse = csr_matrix(user_item_matrix.values)
-    # 重新训练SVD模型
-    SVD = TruncatedSVD(n_components=20, random_state=42)
+
+    # 获取特征数
+    n_features = user_item_sparse.shape[1]
+    if n_features == 0:
+        print("No features available in sparse matrix. Cannot retrain model.")
+        return
+
+    # 动态调整 n_components
+    n_components = min(20, n_features)
+    if n_features == 1:
+        print("Only one feature in the sparse matrix. SVD decomposition is skipped.")
+        return
+
+    # 重新训练 SVD 模型
+    SVD = TruncatedSVD(n_components=n_components, random_state=42)
     decomposed_matrix = SVD.fit_transform(user_item_sparse)
+
     # 更新 item_latent_vectors
     item_latent_vectors = pd.DataFrame(SVD.components_.T, index=user_item_matrix.columns)
     # 更新 asin_to_category，如果 products 有更新的话

@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from app.service.model import products, categories, user_clicks, reviews
+from app.service.recommendation import products, categories, user_clicks, reviews
 
 # -----------------------------------------------
 # 数据预处理

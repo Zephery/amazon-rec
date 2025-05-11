@@ -13,6 +13,7 @@ logging.basicConfig(level=logging.INFO)
 db_lock = threading.Lock()
 conn = sqlite3.connect('db/recommend.db', check_same_thread=False)
 
+
 # 检查数据库是否存在
 def check_db():
     if not os.path.exists("db/recommend.db"):
@@ -52,10 +53,28 @@ def create_tables():
 # 在模块加载时创建表
 create_tables()
 
+def get_recommended_products(top_category,asin):
+    return pd.read_sql_query(
+        """
+        SELECT *
+        FROM amazon_products
+        WHERE category_id = ?
+          AND asin != ?
+        ORDER BY stars DESC
+            LIMIT 5
+        """,
+        conn,
+        params=(top_category, asin)  # 参数化语句，把参数绑定到占位符 `?` 上
+    )
+
+
+def get_one_product(asin):
+    return pd.read_sql_query(f"SELECT * FROM amazon_products WHERE asin = '{asin}'", conn)
+
 
 # 加载商品数据
 def load_products():
-    return pd.read_sql_query('SELECT * FROM amazon_products limit 500000', conn)
+    return pd.read_sql_query('SELECT * FROM amazon_products', conn)
 
 
 def load_categories():
@@ -95,6 +114,41 @@ def delete_user_clicks(user_id):
         # 捕获并打印错误
         print("Error deleting user clicks:", e)
         return f"Error deleting clicks: {e}"
+
+
+def load_data():
+    """
+    从数据库加载数据，并基于评论、产品信息、类别和点击记录合并成一个统一的数据框。
+    """
+    # 读取数据表
+    reviews_df = pd.read_sql_query("SELECT * FROM amazon_reviews", conn)
+    products_df = pd.read_sql_query("SELECT * FROM amazon_products", conn)
+    categories_df = pd.read_sql_query("SELECT * FROM amazon_categories", conn)
+    user_clicks_df = pd.read_sql_query("SELECT * FROM user_clicks", conn)  # 新增点击记录表
+
+    # 数据清理：去除空值（这一步确保数据完整性）
+    reviews_df = reviews_df.dropna(subset=["user_id", "asin", "text", "rating"])
+    products_df = products_df.dropna(subset=["asin", "title", "price", "category_id", "stars"])
+    user_clicks_df = user_clicks_df.dropna(subset=["user_id", "asin", "click_time"])  # 清理点击记录中的空值
+
+    # 合并商品和类别表（categories 使用左连接，补足商品类别信息）
+    products_df = pd.merge(products_df, categories_df, left_on="category_id", right_on="id", how="left")
+
+    # 合并评论数据与产品信息表（基于 asin，使用内连接）
+    merged_reviews_products = pd.merge(reviews_df, products_df, on="asin", how="inner")
+
+    # 合并用户点击数据与产品信息 (基于 user_id 和 asin)
+    merged_clicks_products = pd.merge(user_clicks_df, products_df, on="asin", how="inner")
+
+    # 将评论数据与点击数据合并 (基于 user_id 和 asin，同时保留 comments 和 clicks)
+    combined_data = pd.concat([merged_reviews_products, merged_clicks_products], ignore_index=True)
+
+    # 将 click_time 转换为标准的 pandas datetime 格式
+    if "click_time" in combined_data.columns:
+        combined_data["click_time"] = pd.to_datetime(combined_data["click_time"], errors="coerce")
+
+    # 返回最终的合并数据
+    return combined_data
 
 
 def create_indexes():
