@@ -10,7 +10,7 @@
             elevation="2"
             @click="$router.go(-1)"
         >← Back</v-btn>
-        <h1 class="mb-0">Browsing History</h1>
+        <h1 class="mb-0">浏览记录</h1>
       </v-col>
     </v-row>
 
@@ -22,6 +22,18 @@
 
     <!-- 浏览记录展示 -->
     <div v-else>
+      <!-- 用户画像展示 -->
+      <div class="user-profile-container mt-4">
+        <v-card>
+          <v-card-title>用户画像</v-card-title>
+          <v-card-text v-if="userProfileLoaded">
+            <pre>{{ userProfile }}</pre>
+          </v-card-text>
+          <v-card-text v-else>
+            <p>Loading user profile...</p>
+          </v-card-text>
+        </v-card>
+      </div>
       <div class="product-list">
         <v-card
             v-for="product in browsingHistory"
@@ -59,6 +71,8 @@
       <div v-if="!browsingHistory.length" class="text-center my-4">
         <p>You haven't browsed any products yet!</p>
       </div>
+
+
     </div>
   </v-container>
 </template>
@@ -71,12 +85,15 @@ export default {
   data() {
     return {
       browsingHistory: [],
+      userProfile: {}, // 存储用户画像的 JSON 数据
+      userProfileLoaded: false, // 控制用户画像加载状态
       loading: false, // 用于控制加载动画的显示
     };
   },
 
   mounted() {
     this.loadBrowsingHistory();
+    this.loadUserProfile(); // 在页面加载时同时加载用户画像
   },
 
   methods: {
@@ -93,6 +110,19 @@ export default {
       } finally {
         // 请求结束后关闭加载状态
         this.loading = false;
+      }
+    },
+
+    async loadUserProfile() {
+      try {
+        // 请求用户画像数据
+        const response = await axios.get(HTTP_REQUEST_URL + "/get_user_profile");
+        this.userProfile = response.data || {};
+        this.userProfileLoaded = true; // 成功获取后标记加载完成
+      } catch (error) {
+        console.error("Failed to fetch user profile:", error);
+      } finally {
+        this.userProfileLoaded = true;
       }
     },
 
@@ -117,6 +147,7 @@ export default {
   },
 };
 </script>
+
 <style scoped>
 /* 返回按钮样式 */
 .back-button {
@@ -260,5 +291,23 @@ export default {
   color: #999;
   font-size: 12px;
 }
-</style>
 
+/* 用户画像展示容器 */
+.user-profile-container {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  background-color: #f9f9f9;
+}
+
+.user-profile-container pre {
+  white-space: pre-wrap; /* 允许换行 */
+  word-wrap: break-word; /* 长单词换行 */
+  background-color: #fff;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #eee;
+}
+</style>

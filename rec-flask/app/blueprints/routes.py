@@ -46,9 +46,8 @@ def create_app():
     def get_user_profile():
         user_id = request.remote_addr
         result = get_user_profile_detail(user_id)
-        decoded_data = decode_bytes(result)
 
-        return jsonify(decoded_data)
+        return jsonify(result)
 
     def decode_bytes(data):
         if isinstance(data, dict):
