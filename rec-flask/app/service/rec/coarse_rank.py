@@ -1,15 +1,14 @@
-import pandas as pd
+from app.service.data_loader import products, user_clicks
 
-def coarse_ranking(candidate_items, user_clicks, products):
-    if not candidate_items:
-        item_popularity = user_clicks['asin'].value_counts()
-        if item_popularity.empty:
-            item_popularity = products['asin'].value_counts()
-    else:
-        item_popularity = user_clicks[user_clicks['asin'].isin(candidate_items)]['asin'].value_counts()
-        if item_popularity.empty:
-            item_popularity = pd.Series(candidate_items)
-    ranked_items = item_popularity.index.tolist()
-    if not ranked_items:
-        ranked_items = candidate_items
-    return ranked_items
+
+def coarse_ranking(candidate_asins):
+    cand_df = products[products['asin'].isin(candidate_asins)].copy()
+    cand_df['click_score'] = cand_df['asin'].map(user_clicks['asin'].value_counts())
+    cand_df['click_score'] = cand_df['click_score'].fillna(0)
+    cand_df['final_score'] = (
+        0.6 * cand_df['click_score'] +
+        0.2 * cand_df['stars'].fillna(0) +
+        0.2 * cand_df['reviews'].fillna(0)
+    )
+    sorted_asins = cand_df.sort_values('final_score', ascending=False)['asin'].tolist()
+    return sorted_asins

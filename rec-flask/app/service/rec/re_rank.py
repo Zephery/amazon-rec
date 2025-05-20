@@ -1,42 +1,13 @@
-import pandas as pd
-
-from app.service.rec.recommendation_data import user_profiles, asin_to_category
+from app.service.data_loader import products, user_clicks
 
 
-def re_ranking(user_id, fine_ranked_items):
-    user_profile = user_profiles.get(user_id, {})
-    if not user_profile:
-        return fine_ranked_items
-    preferred_categories = sorted(user_profile.items(), key=lambda x: x[1], reverse=True)
-    preferred_categories = [int(cat) for cat, _ in preferred_categories]
-    item_categories = asin_to_category.reindex(fine_ranked_items)
-    category_items = {}
-    for item in fine_ranked_items:
-        category = item_categories.get(item)
-        if pd.isna(category):
-            category = 'unknown'
-        category_items.setdefault(category, []).append(item)
-    final_ranked_items, added_items = [], set()
-    for category in preferred_categories:
-        items = category_items.get(category, [])
-        for item in items:
-            if item not in added_items:
-                final_ranked_items.append(item)
-                added_items.add(item)
-    for item in category_items.get('unknown', []):
-        if item not in added_items:
-            final_ranked_items.append(item)
-            added_items.add(item)
-    for category, items in category_items.items():
-        if category not in preferred_categories and category != 'unknown':
-            for item in items:
-                if item not in added_items:
-                    final_ranked_items.append(item)
-                    added_items.add(item)
-    for item in fine_ranked_items:
-        if item not in added_items:
-            final_ranked_items.append(item)
-            added_items.add(item)
-    if not final_ranked_items:
-        final_ranked_items = fine_ranked_items
-    return final_ranked_items
+def re_ranking(user_id, coarse_ranked_asins):
+    history = user_clicks[user_clicks['user_id'] == user_id]['asin']
+    his_cates = products[products['asin'].isin(history)]['category_id']
+    if his_cates.empty:
+        return coarse_ranked_asins
+    top_cates = his_cates.value_counts().head(3).index.tolist()
+    prod_df = products[products['asin'].isin(coarse_ranked_asins)].copy()
+    prod_df['cate_priority'] = prod_df['category_id'].apply(lambda c: 1 if c in top_cates else 0)
+    prod_df = prod_df.sort_values(['cate_priority', 'stars', 'reviews'], ascending=[False, False, False])
+    return prod_df['asin'].tolist()
