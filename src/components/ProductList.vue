@@ -98,7 +98,7 @@ export default {
   methods: {
     // 跳转到浏览记录页面
     viewBrowsingHistory() {
-      this.$router.push({ name: 'BrowsingHistory' });
+      this.$router.push({name: 'BrowsingHistory'});
     },
     setupInfiniteScroll() {
       this.observer = new IntersectionObserver(
@@ -168,7 +168,7 @@ export default {
       this.fetchProducts(this.currentPage, this.searchQuery);
     },
     clearBrowsingHistory() {
-      const response = axios.delete(`http://127.0.0.1:5000/clear_clicks`);
+      const response = axios.delete(HTTP_REQUEST_URL + `/clear_clicks`);
       this.currentPage = 1;
       this.hasMore = true;
       this.fetchProducts(this.currentPage, this.searchQuery);
