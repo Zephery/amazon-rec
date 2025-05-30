@@ -64,24 +64,59 @@ index = build_or_load_index(all_embeddings, all_embeddings.shape[1])
 
 
 def faiss_ann_recall(user_click_asins, topn=200):
+    """
+    基于FAISS高效召回相似商品的asin列表，过滤用户已交互，并做简单多样性采样。
+
+    Args:
+        user_click_asins (list): 用户近期浏览/点击过的asin列表。
+        topn (int): 召回商品的最大数量。
+
+    Returns:
+        List[str]: 高相关性且类别多样的asin集合，按得分降序排序。
+    """
+    # 1. 数据准备
     all_asins = products['asin'].tolist()
-    # asin与embedding行号的映射
     asin2idx = {asin: i for i, asin in enumerate(all_asins)}
-    recalled = set()
-    result_scores = dict()
-    for asin in user_click_asins:
-        idx = asin2idx.get(asin)
-        if idx is None:
-            continue
-        emb = all_embeddings[idx].reshape(1, -1)
-        D, I = index.search(emb, topn + 1)
-        for i, sim in zip(I[0], D[0]):
-            recall_asin = all_asins[i]
-            if i == -1 or recall_asin in user_click_asins or recall_asin in recalled:
+    asin2cat = dict(zip(products['asin'], products.get('category', [''] * len(products))))
+    idx_list = [asin2idx[asin] for asin in user_click_asins if asin in asin2idx]
+
+    if not idx_list:
+        return []
+
+    # 2. 批量embedding检索
+    batch_embs = all_embeddings[idx_list]  # shape: (|user_click_asins|, emb_dim)
+    D, I = index.search(batch_embs, topn + 10)  # topn+10 便于后续筛选多样性
+
+    # 3. 按得分聚合并去重，仅保留分最高的版本
+    seen = set(user_click_asins)
+    score_map = {}
+    for row, sims in zip(I, D):
+        for idx, s in zip(row, sims):
+            if idx == -1:
                 continue
-            result_scores[recall_asin] = float(sim)
-            recalled.add(recall_asin)
-    return [a for a, s in sorted(result_scores.items(), key=lambda x: -x[1])]
+            asin = all_asins[idx]
+            if asin in seen:
+                continue
+            # 保留最高分
+            if (asin not in score_map) or (score_map[asin] < s):
+                score_map[asin] = float(s)
+
+    # 4. 得分排序
+    candidates = sorted(score_map.items(), key=lambda x: -x[1])
+
+    # 5. 多样性采样（每类最多 max_per_cat 个）
+    max_per_cat = 100
+    cat_count = {}
+    diverse = []
+    for asin, sim in candidates:
+        cat = asin2cat.get(asin, '')
+        if cat_count.get(cat, 0) < max_per_cat:
+            diverse.append(asin)
+            cat_count[cat] = cat_count.get(cat, 0) + 1
+        if len(diverse) >= topn:
+            break
+
+    return diverse
 
 
 def recall(user_id, top_n=500, hybrid=True):
