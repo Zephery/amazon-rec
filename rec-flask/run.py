@@ -3,6 +3,7 @@ import threading
 from flask_cors import CORS
 
 from app.blueprints.routes import create_app
+from app.service.rec.recall import embeddings
 from app.service.user.user_profile import init_user_profile
 from app.tasks.scheduler import run_scheduler
 from db.database import check_db, initialize_database
@@ -14,6 +15,7 @@ check_db()
 app = create_app()
 CORS(app)
 init_user_profile()
+embeddings()
 
 
 if __name__ == '__main__':

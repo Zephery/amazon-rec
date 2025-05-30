@@ -53,7 +53,8 @@ def create_tables():
 # 在模块加载时创建表
 create_tables()
 
-def get_recommended_products(top_category,asin):
+
+def get_recommended_products(top_category, asin):
     return pd.read_sql_query(
         """
         SELECT *
@@ -66,6 +67,16 @@ def get_recommended_products(top_category,asin):
         conn,
         params=(top_category, asin)  # 参数化语句，把参数绑定到占位符 `?` 上
     )
+
+
+def get_products_by_asins(recall_union):
+    format_sql = ','.join(['?'] * len(recall_union))
+    query = f"SELECT * FROM amazon_products WHERE asin IN ({format_sql})"
+    # pandas 会自动将列名变为 DataFrame 的 columns
+    df = pd.read_sql_query(query, conn, params=recall_union)
+    # 转为字典列表（如果需要list-of-dict的结构）
+    product_list = df.to_dict(orient='records')
+    return product_list
 
 
 def get_one_product(asin):
@@ -95,6 +106,12 @@ def load_user_reviews():
 
 def execute_query(sql, args):
     return pd.read_sql_query(sql, conn, params=args)
+
+
+def get_user_recent_click_asins(user_id, limit=100):
+    tmp = pd.read_sql_query(
+        f"SELECT asin FROM user_clicks WHERE user_id='{user_id}' ORDER BY click_time DESC LIMIT '{limit}'", conn)
+    return tmp['asin'].tolist()[:limit]
 
 
 def delete_user_clicks(user_id):
