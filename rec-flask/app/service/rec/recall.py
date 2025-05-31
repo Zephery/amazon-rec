@@ -1,3 +1,4 @@
+import multiprocessing
 import os
 
 import faiss
@@ -41,7 +42,12 @@ def embeddings():
 
 
 all_embeddings = np.load('product_emb.npy').astype('float32')
-faiss.omp_set_num_threads(8)  # CPU数按实际调整
+print("向量总数:", all_embeddings.shape[0])
+print("每个向量维度:", all_embeddings.shape[1])
+print("该向量内容（head5）:", all_embeddings[0][:5])
+
+
+faiss.omp_set_num_threads(multiprocessing.cpu_count())
 
 
 def build_or_load_index(embeddings, dim, index_path='faiss.index'):
@@ -77,7 +83,7 @@ def faiss_ann_recall(user_click_asins, topn=200):
     # 1. 数据准备
     all_asins = products['asin'].tolist()
     asin2idx = {asin: i for i, asin in enumerate(all_asins)}
-    asin2cat = dict(zip(products['asin'], products.get('category', [''] * len(products))))
+    asin2cat = dict(zip(products['asin'], products.get('category_id', [''] * len(products))))
     idx_list = [asin2idx[asin] for asin in user_click_asins if asin in asin2idx]
 
     if not idx_list:

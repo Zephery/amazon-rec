@@ -128,7 +128,7 @@ export default {
         const response = await axios.get(HTTP_REQUEST_URL + '/products', {
           params: {
             page: page,
-            per_page: 10,
+            per_page: 20,
             q: query
           },
         });
