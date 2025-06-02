@@ -127,19 +127,38 @@ def faiss_ann_recall(user_click_asins, topn=200):
 
 def recall(user_id, top_n=500, hybrid=True):
     user_click_asins = get_user_recent_click_asins(user_id)
-    recall_faiss = faiss_ann_recall(user_click_asins, top_n * 2)
-    recall_cf = []  # 你可以补充协同召回
+    recall_faiss = faiss_ann_recall(user_click_asins, top_n * 2) if user_click_asins else []
+    recall_cf = []
+    recall_hot = get_global_top_products(top_n * 2)
     recall_union, seen = [], set(user_click_asins)
-    for asin in recall_cf + recall_faiss:
+    for asin in recall_faiss + recall_cf + recall_hot:
         if asin not in seen:
             recall_union.append(asin)
             seen.add(asin)
-        if len(recall_union) >= top_n:
+        if len(recall_union) >= top_n * 3:
             break
-    # enrich every asin
-    if recall_union:
-        return get_products_by_asins(recall_union)
-    return []
+    # 打散：按品类分桶轮转采样，提升多样性
+    asin2cat = dict(zip(products['asin'], products.get('category_id', [''] * len(products))))
+    buckets = {}
+    for asin in recall_union:
+        cat = asin2cat.get(asin, 'unknown')
+        buckets.setdefault(cat, []).append(asin)
+    # 轮转采样
+    diverse = []
+    while len(diverse) < top_n:
+        empty = 0
+        for cat in list(buckets.keys()):
+            if buckets[cat]:
+                diverse.append(buckets[cat].pop(0))
+                if len(diverse) >= top_n:
+                    break
+            else:
+                empty += 1
+        if empty == len(buckets):
+            break
+    if diverse:
+        return get_products_by_asins(diverse)
+    return get_products_by_asins(recall_hot[:top_n])
 
 
 def recommend_based_on_similar_users(user_id, top_n=500):
