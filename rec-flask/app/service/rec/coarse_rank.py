@@ -4,8 +4,7 @@ from app.service.data_loader import products, user_clicks
 
 
 def coarse_ranking(candidate_asins):
-    aaaa = [x['asin'] for x in candidate_asins]
-    cand_df = products[products['asin'].isin(aaaa)].copy()
+    cand_df = products[products['asin'].isin(candidate_asins)].copy()
     print(cand_df)
     # 用户点击分
     cand_df['click_score'] = cand_df['asin'].map(user_clicks['asin'].value_counts())

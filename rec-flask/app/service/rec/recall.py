@@ -156,9 +156,8 @@ def recall(user_id, top_n=500, hybrid=True):
                 empty += 1
         if empty == len(buckets):
             break
-    if diverse:
-        return get_products_by_asins(diverse)
-    return get_products_by_asins(recall_hot[:top_n])
+    # 返回asin列表，不查详情，保证后续排序流程可用
+    return diverse
 
 
 def recommend_based_on_similar_users(user_id, top_n=500):
