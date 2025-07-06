@@ -1,7 +1,8 @@
 from app.service.data_loader import products, user_clicks
 import numpy as np
+import pandas as pd
 
-def re_ranking(user_id, coarse_ranked_asins):
+def re_ranking(user_id, coarse_ranked_asins, return_score=False):
     history = user_clicks[user_clicks['user_id'] == user_id]['asin']
     his_cates = products[products['asin'].isin(history)]['category_id']
     prod_df = products[products['asin'].isin(coarse_ranked_asins)].copy()
@@ -31,9 +32,14 @@ def re_ranking(user_id, coarse_ranked_asins):
     max_per_cate = 20
     cate_count = {}
     diverse_asins = []
+    diverse_scores = []
     for _, row in prod_df.iterrows():
         c = row['category_id']
         if cate_count.get(c, 0) < max_per_cate:
             diverse_asins.append(row['asin'])
+            diverse_scores.append(row['final_score'])
             cate_count[c] = cate_count.get(c, 0) + 1
-    return diverse_asins
+    if return_score:
+        return pd.DataFrame({'asin': diverse_asins, 're_score': diverse_scores})
+    else:
+        return diverse_asins

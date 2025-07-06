@@ -75,13 +75,15 @@ def create_app():
             candidates = recall(user_id)
             if not candidates:
                 candidates = get_global_top_products(limit=500)
-            coarse_ranked = coarse_ranking(candidates)
-            fine_ranked = fine_ranking(user_id, coarse_ranked)
-            final_recommendations = re_ranking(user_id, fine_ranked)
+            coarse_df = coarse_ranking(candidates, return_score=True)
+            fine_df = fine_ranking(user_id, coarse_df['asin'].tolist(), return_score=True)
+            re_df = re_ranking(user_id, fine_df['asin'].tolist(), return_score=True)
+            # 合并分数
+            merged = re_df.merge(coarse_df, on='asin', how='left').merge(fine_df, on='asin', how='left')
+            final_recommendations = merged['asin'].tolist()
         else:
+            merged = None
             final_recommendations = get_global_top_products(limit=500)
-            # if not final_recommendations:
-            #     final_recommendations = get_global_top_products()
 
         if not final_recommendations:
             paged_recommendations = get_global_top_products()
@@ -98,6 +100,15 @@ def create_app():
             return jsonify({'message': 'No products to recommend.'}), 404
 
         recommended_products = products[products['asin'].isin(paged_recommendations)].to_dict(orient='records')
+        # 增加各阶段得分
+        if merged is not None:
+            score_map = merged.set_index('asin')[['coarse_score', 'fine_score', 're_score']].to_dict(orient='index')
+            for prod in recommended_products:
+                asin = prod.get('asin')
+                if asin in score_map:
+                    prod['coarse_score'] = float(score_map[asin].get('coarse_score', 0))
+                    prod['fine_score'] = float(score_map[asin].get('fine_score', 0))
+                    prod['re_score'] = float(score_map[asin].get('re_score', 0))
         if len(recommended_products) > page_size:
             recommended_products = recommended_products[:page_size]
         return jsonify({

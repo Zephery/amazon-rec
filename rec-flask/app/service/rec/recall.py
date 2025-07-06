@@ -125,7 +125,7 @@ def faiss_ann_recall(user_click_asins, topn=200):
     return diverse
 
 
-def recall(user_id, top_n=500, hybrid=True):
+def recall(user_id, top_n=5000, hybrid=True):
     user_click_asins = get_user_recent_click_asins(user_id)
     recall_faiss = faiss_ann_recall(user_click_asins, top_n * 2) if user_click_asins else []
     recall_cf = []

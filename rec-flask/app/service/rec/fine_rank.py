@@ -1,7 +1,7 @@
 import numpy as np
 from app.service.data_loader import products, user_clicks
 
-def fine_ranking(user_id, ranked_asins):
+def fine_ranking(user_id, ranked_asins, return_score=False):
     prod_df = products[products['asin'].isin(ranked_asins)].copy()
     # 用户历史点击该品类次数
     user_history = user_clicks[user_clicks['user_id'] == user_id]
@@ -20,4 +20,8 @@ def fine_ranking(user_id, ranked_asins):
         0.2 * prod_df['cate_clicks'] +
         0.1 * prod_df['brand_clicks']
     )
-    return prod_df.sort_values('score', ascending=False)['asin'].tolist()
+    prod_df = prod_df.sort_values('score', ascending=False)
+    if return_score:
+        return prod_df[['asin', 'score']].rename(columns={'score': 'fine_score'})
+    else:
+        return prod_df['asin'].tolist()

@@ -46,9 +46,36 @@
             <span class="currency">$</span>
             <span class="price">{{ product.price }}</span>
           </div>
-          <div class="rating-section mb-2">
-            <span class="stars" v-html="product.stars"></span>
-            <span class="review-count">({{ product.reviews }})</span>
+          <div class="rating-section mb-2" style="justify-content: space-between;">
+            <div style="display: flex; align-items: center;">
+              <span class="stars" v-html="product.stars"></span>
+              <span class="review-count">({{ product.reviews }})</span>
+            </div>
+            <div>
+              <span class="recommend-score-badge ml-2"
+                    v-if="product.re_score !== undefined && product.re_score !== null"
+                    :class="{
+                  'high-score': product.re_score >= 4,
+                  'low-score': product.re_score <= 2
+                }"
+                    @mouseenter="product.showScoreTooltip = true"
+                    @mouseleave="product.showScoreTooltip = false"
+                    style="cursor: pointer; position: relative;"
+              >
+                推荐得分：{{ product.re_score.toFixed(2) }}
+                <div v-if="product.showScoreTooltip && (product.fine_score !== undefined || product.coarse_score !== undefined)" class="score-tooltip">
+                  <div v-if="product.fine_score !== undefined">粗排：{{ product.fine_score.toFixed(2) }}</div>
+                  <div v-if="product.coarse_score !== undefined">精排：{{ product.coarse_score.toFixed(2) }}</div>
+                </div>
+              </span>
+              <span
+                  v-else
+                  class="recommend-score-badge no-score ml-2"
+                  style="cursor: default; position: relative;"
+              >
+                暂无推荐得分
+              </span>
+            </div>
           </div>
         </v-card-text>
       </v-card>
@@ -265,6 +292,27 @@ export default {
   font-size: 12px;
 }
 
+.recommend-score-section {
+  margin-top: 8px;
+}
+
+.recommend-score {
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.high-score {
+  color: #d9534f; /* Bootstrap danger color */
+}
+
+.low-score {
+  color: #5cb85c; /* Bootstrap success color */
+}
+
+.no-score {
+  color: #999;
+}
+
 @media (max-width: 600px) {
   .product-grid {
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -285,5 +333,24 @@ export default {
   width: 100%;
   height: 20px;
   background: transparent;
+}
+
+.score-tooltip {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.92);
+  color: #fff;
+  padding: 16px 24px;
+  border-radius: 8px;
+  line-height: 1.8;
+  z-index: 99999;
+  min-width: 160px;
+  max-width: 320px;
+  margin-top: 0;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+  word-break: break-all;
+  text-align: left;
 }
 </style>

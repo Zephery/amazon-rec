@@ -3,9 +3,8 @@ import numpy as np
 from app.service.data_loader import products, user_clicks
 
 
-def coarse_ranking(candidate_asins):
+def coarse_ranking(candidate_asins, return_score=False):
     cand_df = products[products['asin'].isin(candidate_asins)].copy()
-    print(cand_df)
     # 用户点击分
     cand_df['click_score'] = cand_df['asin'].map(user_clicks['asin'].value_counts())
     cand_df['click_score'] = cand_df['click_score'].fillna(0)
@@ -38,5 +37,8 @@ def coarse_ranking(candidate_asins):
             0.1 * cand_df['price_score'] +
             0.05 * cand_df['brand_score']
     )
-    sorted_asins = cand_df.sort_values('final_score', ascending=False)['asin'].tolist()
-    return sorted_asins
+    cand_df = cand_df.sort_values('final_score', ascending=False)
+    if return_score:
+        return cand_df[['asin', 'final_score']].rename(columns={'final_score': 'coarse_score'})
+    else:
+        return cand_df['asin'].tolist()
