@@ -1,5 +1,6 @@
 import multiprocessing
 import os
+import random
 
 import faiss
 import numpy as np
@@ -89,9 +90,17 @@ def faiss_ann_recall(user_click_asins, topn=200):
     if not idx_list:
         return []
 
-    # 2. 批量embedding检索
+    # 2. 批量embedding检索 - 增加随机性
     batch_embs = all_embeddings[idx_list]  # shape: (|user_click_asins|, emb_dim)
-    D, I = index.search(batch_embs, topn + 10)  # topn+10 便于后续筛选多样性
+    
+    # 添加随机噪声增加多样性
+    noise_factor = 0.05
+    noise = np.random.normal(0, noise_factor, batch_embs.shape)
+    batch_embs = batch_embs + noise
+    
+    # 随机调整检索数量，增加召回数量
+    search_topn = topn + random.randint(50, 100)
+    D, I = index.search(batch_embs, search_topn)
 
     # 3. 按得分聚合并去重，仅保留分最高的版本
     seen = set(user_click_asins)
@@ -103,17 +112,24 @@ def faiss_ann_recall(user_click_asins, topn=200):
             asin = all_asins[idx]
             if asin in seen:
                 continue
-            # 保留最高分
-            if (asin not in score_map) or (score_map[asin] < s):
-                score_map[asin] = float(s)
+            # 保留最高分，但添加随机扰动
+            random_factor = random.uniform(0.9, 1.1)  # 增加随机扰动范围
+            adjusted_score = s * random_factor
+            if (asin not in score_map) or (score_map[asin] < adjusted_score):
+                score_map[asin] = float(adjusted_score)
 
     # 4. 得分排序
     candidates = sorted(score_map.items(), key=lambda x: -x[1])
 
-    # 5. 多样性采样（每类最多 max_per_cat 个）
-    max_per_cat = 100
+    # 5. 增强多样性采样：确保品类分布更均匀
+    max_per_cat = random.randint(100, 150)  # 增加每类最大数量
     cat_count = {}
     diverse = []
+    
+    # 随机打乱候选列表
+    random.shuffle(candidates)
+    
+    # 第一轮：按品类限制采样
     for asin, sim in candidates:
         cat = asin2cat.get(asin, '')
         if cat_count.get(cat, 0) < max_per_cat:
@@ -121,43 +137,85 @@ def faiss_ann_recall(user_click_asins, topn=200):
             cat_count[cat] = cat_count.get(cat, 0) + 1
         if len(diverse) >= topn:
             break
+    
+    # 第二轮：如果品类不够多样，补充其他品类
+    if len(cat_count) < 5:  # 如果品类少于5个，补充更多品类
+        remaining_candidates = [asin for asin, _ in candidates if asin not in diverse]
+        for asin in remaining_candidates:
+            cat = asin2cat.get(asin, '')
+            if cat not in cat_count or cat_count[cat] < max_per_cat // 2:
+                diverse.append(asin)
+                cat_count[cat] = cat_count.get(cat, 0) + 1
+            if len(diverse) >= topn * 1.5:  # 允许更多商品
+                break
 
     return diverse
 
 
 def recall(user_id, top_n=5000, hybrid=True):
     user_click_asins = get_user_recent_click_asins(user_id)
-    recall_faiss = faiss_ann_recall(user_click_asins, top_n * 2) if user_click_asins else []
+    
+    # 随机化召回数量，增加召回量
+    recall_multiplier = random.uniform(2.0, 3.0)  # 增加召回倍数
+    adjusted_top_n = int(top_n * recall_multiplier)
+    
+    recall_faiss = faiss_ann_recall(user_click_asins, adjusted_top_n) if user_click_asins else []
     recall_cf = []
-    recall_hot = get_global_top_products(top_n * 2)
+    recall_hot = get_global_top_products(adjusted_top_n)
+    
     recall_union, seen = [], set(user_click_asins)
     for asin in recall_faiss + recall_cf + recall_hot:
         if asin not in seen:
             recall_union.append(asin)
             seen.add(asin)
-        if len(recall_union) >= top_n * 3:
+        if len(recall_union) >= top_n * 4:  # 增加联合召回数量
             break
-    # 打散：按品类分桶轮转采样，提升多样性
+    
+    # 增强打散：按品类分桶轮转采样，提升多样性
     asin2cat = dict(zip(products['asin'], products.get('category_id', [''] * len(products))))
     buckets = {}
     for asin in recall_union:
         cat = asin2cat.get(asin, 'unknown')
         buckets.setdefault(cat, []).append(asin)
-    # 轮转采样
+    
+    # 随机打乱每个桶内的顺序
+    for cat in buckets:
+        random.shuffle(buckets[cat])
+    
+    # 轮转采样，但增加随机性和数量
     diverse = []
+    bucket_keys = list(buckets.keys())
+    random.shuffle(bucket_keys)  # 随机化桶的顺序
+    
+    # 确保每个品类都有代表
+    min_per_bucket = max(1, top_n // len(buckets)) if buckets else 1
+    
     while len(diverse) < top_n:
         empty = 0
-        for cat in list(buckets.keys()):
+        for cat in bucket_keys:
             if buckets[cat]:
-                diverse.append(buckets[cat].pop(0))
-                if len(diverse) >= top_n:
-                    break
+                # 每个桶至少取min_per_bucket个商品
+                items_to_take = min(min_per_bucket, len(buckets[cat]))
+                for _ in range(items_to_take):
+                    if buckets[cat] and len(diverse) < top_n:
+                        diverse.append(buckets[cat].pop(0))
+                    else:
+                        break
             else:
                 empty += 1
         if empty == len(buckets):
             break
+    
+    # 如果还有剩余商品，继续采样
+    remaining = [asin for cat in buckets.values() for asin in cat]
+    random.shuffle(remaining)
+    diverse.extend(remaining[:top_n - len(diverse)])
+    
+    # 最终随机打乱
+    random.shuffle(diverse)
+    
     # 返回asin列表，不查详情，保证后续排序流程可用
-    return diverse
+    return diverse[:top_n]
 
 
 def recommend_based_on_similar_users(user_id, top_n=500):
