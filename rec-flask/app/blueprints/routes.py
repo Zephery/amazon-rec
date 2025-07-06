@@ -122,8 +122,19 @@ def create_app():
         re_df = _ensure_dataframe_with_scores(re_df, 're_score')
         coarse_df = _ensure_dataframe_with_scores(coarse_df, 'coarse_score')
         fine_df = _ensure_dataframe_with_scores(fine_df, 'fine_score')
-        
         merged = re_df.merge(coarse_df, on='asin', how='left').merge(fine_df, on='asin', how='left')
+        # 填充缺失分数为0
+        for col in ['recall_score', 'coarse_score', 'fine_score', 're_score']:
+            if col not in merged.columns:
+                merged[col] = 0.0
+            merged[col] = merged[col].fillna(0.0)
+        # 计算总得分，可自定义加权
+        merged['total_score'] = (
+            0.2 * merged['recall_score'] +
+            0.25 * merged['coarse_score'] +
+            0.25 * merged['fine_score'] +
+            0.3 * merged['re_score']
+        )
         return merged
 
     def _calculate_combined_score(merged):
@@ -221,21 +232,21 @@ def create_app():
         return re_df, coarse_df, fine_df
 
     def _add_scores_to_products(recommended_products, merged):
-        """为推荐商品添加各阶段分数"""
+        """为推荐商品添加各阶段分数和总分"""
         if merged is not None and 'asin' in merged.columns:
             duplicate_count = merged['asin'].duplicated().sum()
             if duplicate_count > 0:
                 logging.warning(f"Found {duplicate_count} duplicate asins in merged DataFrame")
-            
             merged_unique = merged.drop_duplicates(subset=['asin'], keep='first')
-            score_map = merged_unique.set_index('asin')[['coarse_score', 'fine_score', 're_score']].to_dict(orient='index')
-            
+            score_map = merged_unique.set_index('asin')[['recall_score', 'coarse_score', 'fine_score', 're_score', 'total_score']].to_dict(orient='index')
             for prod in recommended_products:
                 asin = prod.get('asin')
                 if asin in score_map:
+                    prod['recall_score'] = float(score_map[asin].get('recall_score', 0))
                     prod['coarse_score'] = float(score_map[asin].get('coarse_score', 0))
                     prod['fine_score'] = float(score_map[asin].get('fine_score', 0))
                     prod['re_score'] = float(score_map[asin].get('re_score', 0))
+                    prod['total_score'] = float(score_map[asin].get('total_score', 0))
 
     def _handle_pagination(final_recommendations, page, page_size):
         """处理分页逻辑"""
