@@ -85,7 +85,7 @@ def get_one_product(asin):
 
 # 加载商品数据
 def load_products():
-    return pd.read_sql_query('SELECT * FROM amazon_products', conn)
+    return pd.read_sql_query('SELECT * FROM amazon_products where category_id not in (134)', conn)
 
 
 def load_categories():

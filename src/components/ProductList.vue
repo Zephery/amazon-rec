@@ -62,12 +62,14 @@
                     @mouseleave="product.showScoreTooltip = false"
                     style="cursor: pointer; position: relative;"
               >
-                推荐得分：{{ product.re_score.toFixed(2) }}
+                推荐得分：{{ product.total_score.toFixed(2) }}
                 <div
                     v-if="product.showScoreTooltip && (product.fine_score !== undefined || product.coarse_score !== undefined)"
                     class="score-tooltip">
-                  <div v-if="product.fine_score !== undefined">粗排：{{ product.fine_score.toFixed(2) }}</div>
-                  <div v-if="product.coarse_score !== undefined">精排：{{ product.coarse_score.toFixed(2) }}</div>
+                  <div v-if="product.fine_score !== undefined">召回得分：{{ product.recall_score.toFixed(2) }}</div>
+                  <div v-if="product.fine_score !== undefined">粗排得分：{{ product.fine_score.toFixed(2) }}</div>
+                  <div v-if="product.coarse_score !== undefined">精排得分：{{ product.coarse_score.toFixed(2) }}</div>
+                  <div v-if="product.coarse_score !== undefined">重排得分：{{ product.re_score.toFixed(2) }}</div>
                 </div>
               </span>
               <span
@@ -347,12 +349,12 @@ export default {
   transform: translate(-50%, -50%);
   background: rgba(0, 0, 0, 0.92);
   color: #fff;
-  padding: 16px 24px;
+  padding: 16px 20px;
   border-radius: 8px;
   line-height: 1.8;
   z-index: 99999;
   min-width: 160px;
-  max-width: 320px;
+  max-width: 400px;
   margin-top: 0;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
   word-break: break-all;
