@@ -63,7 +63,9 @@
                     style="cursor: pointer; position: relative;"
               >
                 推荐得分：{{ product.re_score.toFixed(2) }}
-                <div v-if="product.showScoreTooltip && (product.fine_score !== undefined || product.coarse_score !== undefined)" class="score-tooltip">
+                <div
+                    v-if="product.showScoreTooltip && (product.fine_score !== undefined || product.coarse_score !== undefined)"
+                    class="score-tooltip">
                   <div v-if="product.fine_score !== undefined">粗排：{{ product.fine_score.toFixed(2) }}</div>
                   <div v-if="product.coarse_score !== undefined">精排：{{ product.coarse_score.toFixed(2) }}</div>
                 </div>
@@ -80,6 +82,9 @@
         </v-card-text>
       </v-card>
       <div ref="sentinel" class="sentinel"></div>
+    </div>
+    <div v-if="loading && hasMore && products.length" style="display: flex; justify-content: center;" class="my-4">
+      <v-progress-circular indeterminate color="primary"/>
     </div>
 
     <!-- Loading more indicator -->
@@ -349,7 +354,7 @@ export default {
   min-width: 160px;
   max-width: 320px;
   margin-top: 0;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
   word-break: break-all;
   text-align: left;
 }
