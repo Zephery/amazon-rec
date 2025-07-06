@@ -42,6 +42,7 @@ def embeddings():
             f.write(f"{asin}\n")
 
 
+print("start to load embeddings")
 all_embeddings = np.load('product_emb.npy').astype('float32')
 print("向量总数:", all_embeddings.shape[0])
 print("每个向量维度:", all_embeddings.shape[1])

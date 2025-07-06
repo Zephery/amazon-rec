@@ -1,12 +1,7 @@
 # recommendation.py
-import logging
+from datetime import datetime
 
 import fakeredis
-import numpy as np
-import pandas as pd
-from scipy.sparse import csr_matrix
-from sklearn.decomposition import TruncatedSVD
-from sklearn.metrics.pairwise import cosine_similarity
 
 from db.database import load_products, load_user_clicks, load_user_reviews, load_categories, initialize_database
 
@@ -27,11 +22,13 @@ model_initialized = False
 
 # 加载数据
 try:
+    print("start to load db " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     products = load_products()
     user_clicks = load_user_clicks()
     reviews = load_user_reviews()
     categories = load_categories()
+    print("end to load db " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
 except Exception as e:
     print(e)
     initialize_database()
-
