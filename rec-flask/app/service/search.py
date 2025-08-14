@@ -1,19 +1,10 @@
 import math
-import faiss
-import numpy as np
-from sentence_transformers import SentenceTransformer
-from pathlib import Path
 
 import pandas as pd
 from flask import jsonify
 
-# 加载模型和向量索引（全局只加载一次，避免重复加载）
-base_path = str(Path(__file__).parent.parent.parent)
-model = SentenceTransformer(base_path + "/all-MiniLM-L6-v2")
-embeddings = np.load(base_path + '/product_emb.npy').astype('float32')
-faiss.normalize_L2(embeddings)
-index = faiss.IndexFlatIP(embeddings.shape[1])
-index.add(embeddings)
+from app.service.rec.recall import index, model
+
 
 def search_products(products, user_id, q, page=1, page_size=100):
     """

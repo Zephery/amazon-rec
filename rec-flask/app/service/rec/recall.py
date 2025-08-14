@@ -9,6 +9,8 @@ from sentence_transformers import SentenceTransformer
 from app.service.data_loader import products
 from db.database import get_user_recent_click_asins, get_products_by_asins
 
+model = SentenceTransformer("all-MiniLM-L6-v2")
+
 
 def embeddings():
     # 判断 embedding 文件是否已存在，存在则不重复生成
@@ -17,7 +19,6 @@ def embeddings():
         return
 
     # 1. 加载模型（建议 MiniLM，快且效果很好）
-    model = SentenceTransformer("all-MiniLM-L6-v2")
 
     asins, titles = products['asin'].tolist(), products['title'].tolist()
 
