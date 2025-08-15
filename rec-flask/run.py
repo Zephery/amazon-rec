@@ -4,7 +4,7 @@ from datetime import datetime
 from flask_cors import CORS
 
 from app.blueprints.routes import create_app
-from app.service.rec.recall import embeddings
+from app.service.rec.recall import gen_embeddings
 from app.service.user.user_profile import init_user_profile
 from app.tasks.scheduler import run_scheduler
 from db.database import check_db
@@ -22,7 +22,7 @@ CORS(app)
 init_user_profile()
 print("init_user_profile finish " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-embeddings()
+gen_embeddings()
 print("embeddings finish " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 if __name__ == '__main__':

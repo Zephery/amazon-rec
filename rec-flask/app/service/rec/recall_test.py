@@ -6,8 +6,11 @@ import numpy as np
 import pandas as pd
 from sentence_transformers import SentenceTransformer
 
+from app.service.rec.recall import gen_embeddings
+
 # 数据加载
-base_path = str(Path(__file__).parent.parent.parent.parent)
+gen_embeddings()
+base_path = str(Path(__file__).parent.parent.parent.parent.parent)
 db_path = base_path + '/db/recommend.db'
 conn = sqlite3.connect(db_path, check_same_thread=False)
 

@@ -1,5 +1,4 @@
 import json
-import os
 from statistics import mean
 
 import fakeredis
@@ -13,8 +12,17 @@ from db.database import load_data, get_one_product, get_recommended_products
 redis_instance = fakeredis.FakeStrictRedis()
 user_profiles = {}
 
-USER_PROFILE_PATH = 'user_profiles.json'
-
+# 停用词扩展
+stopwords_list = list(
+    {"i", "me", "my", "myself", "we", "our", "ours", "ourselves", "you", "your", "yours", "yourself", "yourselves",
+     "he", "him", "his", "himself", "she", "her", "hers", "herself", "it", "its", "itself", "they", "them", "their",
+     "theirs", "themselves", "what", "which", "who", "whom", "this", "that", "these", "those", "am", "is", "are", "was",
+     "were", "be", "been", "being", "have", "has", "had", "having", "do", "does", "did", "doing", "a", "an", "the",
+     "and", "but", "if", "or", "because", "as", "until", "while", "of", "at", "by", "for", "with", "about", "against",
+     "between", "into", "through", "during", "before", "after", "above", "below", "to", "from", "up", "down", "in",
+     "out", "on", "off", "over", "under", "again", "further", "then", "once", "here", "there", "when", "where", "why",
+     "how", "all", "any", "both", "each", "few", "more", "most", "other", "some", "such", "no", "nor", "not", "only",
+     "own", "same", "so", "than", "too", "very", "s", "t", "can", "will", "just", "don", "should", "now"})
 
 # 年龄推测
 def infer_age(user_data):
@@ -28,9 +36,7 @@ def infer_age(user_data):
     else:
         return "50+"
 
-    # 性别推测
-
-
+# 性别推测
 def infer_gender(user_data):
     category_preferences = user_data["category_name"].value_counts()
     if "Beauty" in category_preferences.index or "Fashion" in category_preferences.index:
@@ -40,9 +46,7 @@ def infer_gender(user_data):
     else:
         return "unknown"
 
-    # 构建用户画像
-
-
+# 构建用户画像
 def build_user_profiles(data):
     global user_profiles
     data['timestamp'] = pd.to_datetime(data['timestamp'])
@@ -57,7 +61,7 @@ def build_user_profiles(data):
         avg_price = mean(user_data["price"]) if len(user_data["price"]) > 0 else 0
         expensive_product_count = len(user_data[user_data["price"] > 1000])
         try:
-            vectorizer = CountVectorizer(max_features=5, stop_words='english')
+            vectorizer = CountVectorizer(max_features=5, stop_words=stopwords_list)
             words_matrix = vectorizer.fit_transform(user_data["text"].astype(str))
             top_keywords = vectorizer.get_feature_names_out()
         except ValueError:
@@ -72,7 +76,7 @@ def build_user_profiles(data):
                     sentiments["negative"] += 1
                 else:
                     sentiments["neutral"] += 1
-                    # 存储每个用户历史价格列表（用于动态均值）
+        # 存储每个用户历史价格列表（用于动态均值）
         user_prices = list(user_data["price"])
         inferred_age = infer_age(user_data)
         inferred_gender = infer_gender(user_data)
@@ -91,20 +95,18 @@ def build_user_profiles(data):
         }
     return user_profiles
 
-
 # 存储用户画像到 Redis（全为JSON字符串，无哈希/字节）
 def store_profiles_in_redis(redis_instance, profiles):
     for user_id, profile in profiles.items():
         redis_instance.set(f"user:{user_id}", json.dumps(profile))
     print("User profiles successfully stored in Redis as JSON strings!")
 
-
 # 获取用户画像（直接dict）
 def get_user_profile_detail(user_id):
     value = redis_instance.get(f"user:{user_id}")
     if value is None:
         return None
-        # fakeredis.get 返回str，redis-py真库返回bytes
+    # fakeredis.get 返回str，redis-py真库返回bytes
     if isinstance(value, bytes):
         value = value.decode('utf-8')
     try:
@@ -113,31 +115,7 @@ def get_user_profile_detail(user_id):
         print(f"Cannot parse user profile JSON for {user_id}: {e}")
         return None
 
-    # 文件持久化：保存用户画像到本地文件
-
-
-def save_profiles_to_file(profiles, path=USER_PROFILE_PATH):
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump(profiles, f, ensure_ascii=False)
-    print(f"User profiles saved to {path}")
-
-
-# 文件持久化：从本地文件加载用户画像
-def load_profiles_from_file(path=USER_PROFILE_PATH):
-    if not os.path.exists(path):
-        return None
-    try:
-        with open(path, 'r', encoding='utf-8') as f:
-            profiles = json.load(f)
-        print(f"Loaded user profiles from {path}")
-        return profiles
-    except Exception as e:
-        print(f"Error loading user profiles from {path}: {e}")
-        return None
-
-    # 更新用户行为，整体更新后存回
-
-
+# 更新用户行为，整体更新后存回
 def user_behavior_update(user_id, asin):
     global redis_instance, user_profiles
     user_profile = get_user_profile_detail(user_id)
@@ -166,16 +144,12 @@ def user_behavior_update(user_id, asin):
 
     try:
         redis_instance.set(f"user:{user_id}", json.dumps(user_profile))
-        user_profiles[user_id] = user_profile
-        save_profiles_to_file(user_profiles)
-        print(f"User {user_id} profile updated successfully and saved to file.")
+        print(f"User {user_id} profile updated successfully.")
     except Exception as e:
         print(f"Error updating the user profile for {user_id}: {e}")
         print("Current user profile:", user_profile)
 
-    # 推荐列表的写入和读取（全部为JSON字符串）
-
-
+# 推荐列表的写入和读取（全部为JSON字符串）
 def update_recommendations_after_click(user_id, asin):
     user_profile = get_user_profile_detail(user_id)
     if not user_profile:
@@ -192,37 +166,22 @@ def update_recommendations_after_click(user_id, asin):
     redis_instance.set(f"recommendations:{user_id}", json.dumps({"recommended_products": recommendations}))
     print(f"Recommendations updated for User {user_id}: {recommendations}")
 
+def get_recommendations(user_id):
+    rec_json = redis_instance.get(f"recommendations:{user_id}")
+    if rec_json is None:
+        return None
+    if isinstance(rec_json, bytes):
+        rec_json = rec_json.decode('utf-8')
+    try:
+        return json.loads(rec_json)
+    except Exception as e:
+        print(f"Cannot parse recommendation JSON for {user_id}: {e}")
+        return None
 
 # 初始化流程
 def init_user_profile():
     global user_profiles
-    # 优先尝试从文件加载
-    profiles = load_profiles_from_file()
-    if profiles:
-        user_profiles = profiles
-        # 同步写入 Redis        store_profiles_in_redis(redis_instance, user_profiles)
-        print(f"已从文件加载 {len(user_profiles)} 个用户画像，并同步到 Redis。")
-        return user_profiles
-        # 检查 Redis 是否已有用户画像
-    if redis_instance.keys('user:*'):
-        print('用户画像已存在于 Redis，无需重复初始化。')
-        user_profiles.clear()
-        for key in redis_instance.keys('user:*'):
-            user_id = key.decode('utf-8').split(':')[1] if isinstance(key, bytes) else key.split(':')[1]
-            value = redis_instance.get(key)
-            if isinstance(value, bytes):
-                value = value.decode('utf-8')
-            try:
-                user_profiles[user_id] = json.loads(value)
-            except Exception as e:
-                print(f"Cannot parse user profile JSON for {user_id}: {e}")
-        save_profiles_to_file(user_profiles)
-        print(f"已从 Redis 加载 {len(user_profiles)} 个用户画像，并保存到文件。")
-        return user_profiles
-        # 文件和 Redis 都没有，需初始化
     data = load_data()
     user_profiles = build_user_profiles(data)
     store_profiles_in_redis(redis_instance, user_profiles)
-    save_profiles_to_file(user_profiles)
-    print(f"初始化并保存 {len(user_profiles)} 个用户画像到文件和 Redis。")
-    return user_profiles
+

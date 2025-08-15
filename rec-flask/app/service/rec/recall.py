@@ -1,6 +1,7 @@
 import multiprocessing
 import os
 import random
+from pathlib import Path
 
 import faiss
 import numpy as np
@@ -9,16 +10,15 @@ from sentence_transformers import SentenceTransformer
 from app.service.data_loader import products
 from db.database import get_user_recent_click_asins, get_products_by_asins
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
 
-
-def embeddings():
+def gen_embeddings():
     # 判断 embedding 文件是否已存在，存在则不重复生成
     if os.path.exists('product_emb.npy'):
         print("Embedding 文件已经存在，无需重复生成。")
         return
 
     # 1. 加载模型（建议 MiniLM，快且效果很好）
+    model = SentenceTransformer("all-MiniLM-L6-v2")
 
     asins, titles = products['asin'].tolist(), products['title'].tolist()
 
@@ -44,7 +44,10 @@ def embeddings():
 
 
 print("start to load embeddings")
-all_embeddings = np.load('product_emb.npy').astype('float32')
+base_path = str(Path(__file__).parent.parent.parent.parent)
+model = SentenceTransformer(base_path + "/all-MiniLM-L6-v2")
+gen_embeddings()
+all_embeddings = np.load(base_path + '/product_emb.npy').astype('float32')
 print("向量总数:", all_embeddings.shape[0])
 print("每个向量维度:", all_embeddings.shape[1])
 print("该向量内容（head5）:", all_embeddings[0][:5])
@@ -227,3 +230,7 @@ def recommend_based_on_similar_users(user_id, top_n=500):
 
 def get_global_top_products(top_n=1000):
     return list(products['asin'].value_counts().head(top_n).index)
+
+
+if __name__ == '__main__':
+    gen_embeddings()

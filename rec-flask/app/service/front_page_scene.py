@@ -1,66 +1,77 @@
-import os
-
 import numpy as np
 import pandas as pd
 
-from app.service.data_loader import products as raw_products, categories, user_clicks, reviews
-from app.utils.common_utils import get_current_time
+from app.service.data_loader import products, categories, user_clicks, reviews
 
-CACHE_PATH = 'products_cache.json'
+# -----------------------------------------------
+# 数据预处理
+# -----------------------------------------------
 
+# 处理基础数据，填充缺失值
+products['stars'] = products['stars'].fillna(0)
+products['reviews'] = products['reviews'].fillna(0)
+products['boughtInLastMonth'] = products['boughtInLastMonth'].fillna(0)
 
-def save_products_to_json(df, path):
-    df.to_json(path, orient='records', force_ascii=False)
+# 合并产品分类信息
+products = pd.merge(products, categories, left_on='category_id', right_on='id', how='left')
+products['category_name'] = products['category_name'].fillna("Unknown")
 
+# -----------------------------------------------
+# 利用 `amazon_reviews` 表补充评分和评论信息
+# -----------------------------------------------
 
-def load_products_from_json(path):
-    return pd.read_json(path, orient='records')
+# 从 reviews 表中统计商品的平均评分和评价数量
+reviews_stats = reviews.groupby('asin').agg(
+    avg_rating=('rating', 'mean'),
+    num_reviews=('rating', 'count')
+).reset_index()
 
+# 将计算的统计数据合并到商品列表
+products = pd.merge(products, reviews_stats, on='asin', how='left')
 
-if os.path.exists(CACHE_PATH):
-    print(f"从缓存文件 {CACHE_PATH} 加载 front page products...")
-    products = load_products_from_json(CACHE_PATH)
-else:
-    print("缓存文件不存在，重新计算 front page products...")
-    products = raw_products.copy()
-    products['stars'] = products['stars'].fillna(0)
-    products['reviews'] = products['reviews'].fillna(0)
-    products['boughtInLastMonth'] = products['boughtInLastMonth'].fillna(0)
-    products = pd.merge(products, categories, left_on='category_id', right_on='id', how='left')
-    products['category_name'] = products['category_name'].fillna("Unknown")
-    reviews_stats = reviews.groupby('asin').agg(
-        avg_rating=('rating', 'mean'),
-        num_reviews=('rating', 'count')
-    ).reset_index()
-    products = pd.merge(products, reviews_stats, on='asin', how='left')
-    products['avg_rating'] = products['avg_rating'].fillna(0)
-    products['num_reviews'] = products['num_reviews'].fillna(0)
-    click_stats = user_clicks.groupby('asin').agg(
-        click_count=('asin', 'count')
-    ).reset_index()
-    products = pd.merge(products, click_stats, on='asin', how='left')
-    products['click_count'] = products['click_count'].fillna(0)
+# 填充 `avg_rating` 和 `num_reviews` 的缺失值
+products['avg_rating'] = products['avg_rating'].fillna(0)
+products['num_reviews'] = products['num_reviews'].fillna(0)
 
+# -----------------------------------------------
+# 点击数据统计
+# -----------------------------------------------
 
-    def calculate_score(row):
-        click_weight = 0.3
-        rating_weight = 0.4
-        review_weight = 0.2
-        sales_weight = 0.1
-        return (
-                click_weight * row['click_count'] +
-                rating_weight * row['avg_rating'] +
-                review_weight * np.log1p(row['num_reviews']) +
-                sales_weight * row['boughtInLastMonth']
-        )
+# 计算用户点击的次数
+click_stats = user_clicks.groupby('asin').agg(
+    click_count=('asin', 'count')  # 每个商品的点击次数
+).reset_index()
+
+# 合并点击统计数据到商品列表
+products = pd.merge(products, click_stats, on='asin', how='left')
+
+# 填充 `click_count` 的空值
+products['click_count'] = products['click_count'].fillna(0)
 
 
-    products['score'] = products.apply(calculate_score, axis=1)
-    products = products.sort_values(by='score', ascending=False)
-    save_products_to_json(products, CACHE_PATH)
-    print(f"front page products 已保存到 {CACHE_PATH}")
+# -----------------------------------------------
+# 综合评分计算
+# -----------------------------------------------
 
-print(get_current_time() + " end to prepare front page scene")
+# 定义综合评分函数
+def calculate_score(row):
+    click_weight = 0.3
+    rating_weight = 0.4
+    review_weight = 0.2
+    sales_weight = 0.1
+    return (
+            click_weight * row['click_count'] +
+            rating_weight * row['avg_rating'] +
+            review_weight * np.log1p(row['num_reviews']) +  # 对评论数量取对数
+            sales_weight * row['boughtInLastMonth']
+    )
+
+
+# 应用评分逻辑，将综合评分附加到商品数据
+products['score'] = products.apply(calculate_score, axis=1)
+
+# 按综合评分降序排序
+products = products.sort_values(by='score', ascending=False)
 
 
 # -----------------------------------------------
