@@ -8,7 +8,7 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 
 from app.service.data_loader import products
-from db.database import get_user_recent_click_asins, get_products_by_asins
+from db.database import get_user_recent_click_asins
 
 
 def gen_embeddings():
@@ -51,7 +51,6 @@ all_embeddings = np.load(base_path + '/product_emb.npy').astype('float32')
 print("向量总数:", all_embeddings.shape[0])
 print("每个向量维度:", all_embeddings.shape[1])
 print("该向量内容（head5）:", all_embeddings[0][:5])
-
 
 faiss.omp_set_num_threads(multiprocessing.cpu_count())
 
@@ -97,12 +96,12 @@ def faiss_ann_recall(user_click_asins, topn=200):
 
     # 2. 批量embedding检索 - 增加随机性
     batch_embs = all_embeddings[idx_list]  # shape: (|user_click_asins|, emb_dim)
-    
+
     # 添加随机噪声增加多样性
     noise_factor = 0.05
     noise = np.random.normal(0, noise_factor, batch_embs.shape)
     batch_embs = batch_embs + noise
-    
+
     # 随机调整检索数量，增加召回数量
     search_topn = topn + random.randint(50, 100)
     D, I = index.search(batch_embs, search_topn)
@@ -113,6 +112,8 @@ def faiss_ann_recall(user_click_asins, topn=200):
     for row, sims in zip(I, D):
         for idx, s in zip(row, sims):
             if idx == -1:
+                continue
+            if idx >= len(all_asins):
                 continue
             asin = all_asins[idx]
             if asin in seen:
@@ -130,10 +131,10 @@ def faiss_ann_recall(user_click_asins, topn=200):
     max_per_cat = random.randint(100, 150)  # 增加每类最大数量
     cat_count = {}
     diverse = []
-    
+
     # 随机打乱候选列表
     random.shuffle(candidates)
-    
+
     # 第一轮：按品类限制采样
     for asin, sim in candidates:
         cat = asin2cat.get(asin, '')
@@ -142,7 +143,7 @@ def faiss_ann_recall(user_click_asins, topn=200):
             cat_count[cat] = cat_count.get(cat, 0) + 1
         if len(diverse) >= topn:
             break
-    
+
     # 第二轮：如果品类不够多样，补充其他品类
     if len(cat_count) < 5:  # 如果品类少于5个，补充更多品类
         remaining_candidates = [asin for asin, _ in candidates if asin not in diverse]
@@ -159,15 +160,15 @@ def faiss_ann_recall(user_click_asins, topn=200):
 
 def recall(user_id, top_n=5000, hybrid=True):
     user_click_asins = get_user_recent_click_asins(user_id)
-    
+
     # 随机化召回数量，增加召回量
     recall_multiplier = random.uniform(2.0, 3.0)  # 增加召回倍数
     adjusted_top_n = int(top_n * recall_multiplier)
-    
+
     recall_faiss = faiss_ann_recall(user_click_asins, adjusted_top_n) if user_click_asins else []
     recall_cf = []
     recall_hot = get_global_top_products(adjusted_top_n)
-    
+
     recall_union, seen = [], set(user_click_asins)
     for asin in recall_faiss + recall_cf + recall_hot:
         if asin not in seen:
@@ -175,26 +176,26 @@ def recall(user_id, top_n=5000, hybrid=True):
             seen.add(asin)
         if len(recall_union) >= top_n * 4:  # 增加联合召回数量
             break
-    
+
     # 增强打散：按品类分桶轮转采样，提升多样性
     asin2cat = dict(zip(products['asin'], products.get('category_id', [''] * len(products))))
     buckets = {}
     for asin in recall_union:
         cat = asin2cat.get(asin, 'unknown')
         buckets.setdefault(cat, []).append(asin)
-    
+
     # 随机打乱每个桶内的顺序
     for cat in buckets:
         random.shuffle(buckets[cat])
-    
+
     # 轮转采样，但增加随机性和数量
     diverse = []
     bucket_keys = list(buckets.keys())
     random.shuffle(bucket_keys)  # 随机化桶的顺序
-    
+
     # 确保每个品类都有代表
     min_per_bucket = max(1, top_n // len(buckets)) if buckets else 1
-    
+
     while len(diverse) < top_n:
         empty = 0
         for cat in bucket_keys:
@@ -210,15 +211,15 @@ def recall(user_id, top_n=5000, hybrid=True):
                 empty += 1
         if empty == len(buckets):
             break
-    
+
     # 如果还有剩余商品，继续采样
     remaining = [asin for cat in buckets.values() for asin in cat]
     random.shuffle(remaining)
     diverse.extend(remaining[:top_n - len(diverse)])
-    
+
     # 最终随机打乱
     random.shuffle(diverse)
-    
+
     # 返回asin列表，不查详情，保证后续排序流程可用
     return diverse[:top_n]
 
