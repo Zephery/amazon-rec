@@ -4,7 +4,7 @@
 (
     cd /home/admin/amazon-rec/rec-flask/ || exit
     . .venv/bin/activate
-    nohup flask run --host=0.0.0.0 > /dev/null 2>&1 &
+    nohup flask run --host=0.0.0.0 >> aa.log 2>&1 &
     echo $! > /home/admin/amazon-rec/rec-flask/flask.pid
 )
 
