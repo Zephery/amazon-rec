@@ -1,4 +1,6 @@
 import json
+import os
+from pathlib import Path
 from statistics import mean
 
 import fakeredis
@@ -11,6 +13,10 @@ from db.database import load_data, get_one_product, get_recommended_products
 # Redis 实例（伪 Redis 数据库）
 redis_instance = fakeredis.FakeStrictRedis()
 user_profiles = {}
+
+# 缓存文件路径（项目根目录下）
+_BASE_PATH = str(Path(__file__).parent.parent.parent.parent)
+_PROFILE_CACHE_PATH = os.path.join(_BASE_PATH, 'user_profiles.json')
 
 # 停用词扩展
 stopwords_list = list(
@@ -94,6 +100,26 @@ def build_user_profiles(data):
             "sentiments": sentiments
         }
     return user_profiles
+
+# 从/写入 文件缓存
+def load_profiles_from_file(path: str = _PROFILE_CACHE_PATH):
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Failed to load user profiles from {path}: {e}")
+        return None
+
+
+def save_profiles_to_file(profiles: dict, path: str = _PROFILE_CACHE_PATH):
+    try:
+        with open(path, 'w') as f:
+            json.dump(profiles, f)
+        print(f"User profiles saved to {path}")
+    except Exception as e:
+        print(f"Failed to save user profiles to {path}: {e}")
 
 # 存储用户画像到 Redis（全为JSON字符串，无哈希/字节）
 def store_profiles_in_redis(redis_instance, profiles):
@@ -181,7 +207,17 @@ def get_recommendations(user_id):
 # 初始化流程
 def init_user_profile():
     global user_profiles
+    # 1) 优先从文件缓存加载，避免每次启动都重新构建
+    cached = load_profiles_from_file()
+    if isinstance(cached, dict) and cached:
+        user_profiles = cached
+        store_profiles_in_redis(redis_instance, user_profiles)
+        print("Loaded user profiles from cache file.")
+        return
+
+    # 2) 若无缓存文件，则构建、落盘并写入Redis
     data = load_data()
     user_profiles = build_user_profiles(data)
+    save_profiles_to_file(user_profiles)
     store_profiles_in_redis(redis_instance, user_profiles)
 
