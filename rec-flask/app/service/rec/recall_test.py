@@ -1,12 +1,11 @@
 import sqlite3
 from pathlib import Path
 
-import faiss
 import numpy as np
 import pandas as pd
-from sentence_transformers import SentenceTransformer
 
 from app.service.rec.recall import gen_embeddings
+from app.service.embedding_service import embedding_service
 
 # 数据加载
 gen_embeddings()
@@ -17,18 +16,14 @@ conn = sqlite3.connect(db_path, check_same_thread=False)
 df = pd.read_sql_query('SELECT * FROM amazon_products', conn)
 titles = df["title"].astype(str).tolist()
 
-# 向量化
-model = SentenceTransformer(base_path + "/all-MiniLM-L6-v2")
-embeddings = np.load(base_path + '/product_emb.npy').astype('float32')
-
-# 索引
-faiss.normalize_L2(embeddings)
-index = faiss.IndexFlatIP(embeddings.shape[1])
-index.add(embeddings)
+# 共享模型与索引
+model = embedding_service.get_model()
+embeddings = embedding_service.get_embeddings()
+index = embedding_service.get_index()
 
 # 查询
 query = "ipad"
-query_emb = model.encode([query], normalize_embeddings=True)
+query_emb = embedding_service.encode_query(query, normalize=True)
 D, I = index.search(query_emb, 10)
 
 for i in I[0]:

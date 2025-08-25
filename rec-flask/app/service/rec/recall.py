@@ -1,13 +1,10 @@
-import multiprocessing
 import os
 import random
-from pathlib import Path
 
-import faiss
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 from app.service.data_loader import products
+from app.service.embedding_service import embedding_service
 from db.database import get_user_recent_click_asins
 
 
@@ -17,8 +14,8 @@ def gen_embeddings():
         print("Embedding 文件已经存在，无需重复生成。")
         return
 
-    # 1. 加载模型（建议 MiniLM，快且效果很好）
-    model = SentenceTransformer("all-MiniLM-L6-v2")
+    # 1. 使用共享模型
+    model = embedding_service.get_model()
 
     asins, titles = products['asin'].tolist(), products['title'].tolist()
 
@@ -44,34 +41,18 @@ def gen_embeddings():
 
 
 print("start to load embeddings")
-base_path = str(Path(__file__).parent.parent.parent.parent)
-model = SentenceTransformer(base_path + "/all-MiniLM-L6-v2")
 gen_embeddings()
-all_embeddings = np.load(base_path + '/product_emb.npy').astype('float32')
+all_embeddings = embedding_service.get_embeddings()
 print("向量总数:", all_embeddings.shape[0])
 print("每个向量维度:", all_embeddings.shape[1])
 print("该向量内容（head5）:", all_embeddings[0][:5])
 
-faiss.omp_set_num_threads(multiprocessing.cpu_count())
+
+def get_shared_index():
+    return embedding_service.get_index()
 
 
-def build_or_load_index(embeddings, dim, index_path='faiss.index'):
-    try:
-        index = faiss.read_index(index_path)
-        print("Loaded FAISS index from disk.")
-    except Exception:
-        quantizer = faiss.IndexFlatIP(dim)
-        nlist = 4096
-        index = faiss.IndexIVFFlat(quantizer, dim, nlist)
-        faiss.normalize_L2(embeddings)
-        index.train(embeddings)
-        index.add(embeddings)
-        faiss.write_index(index, index_path)
-        print("Trained and saved FAISS index.")
-    return index
-
-
-index = build_or_load_index(all_embeddings, all_embeddings.shape[1])
+index = get_shared_index()
 
 
 def faiss_ann_recall(user_click_asins, topn=200):

@@ -1,19 +1,8 @@
 import math
-import faiss
-import numpy as np
-from sentence_transformers import SentenceTransformer
-from pathlib import Path
-
 import pandas as pd
 from flask import jsonify
 
-# 加载模型和向量索引（全局只加载一次，避免重复加载）
-base_path = str(Path(__file__).parent.parent.parent)
-model = SentenceTransformer(base_path + "/all-MiniLM-L6-v2")
-embeddings = np.load(base_path + '/product_emb.npy').astype('float32')
-faiss.normalize_L2(embeddings)
-index = faiss.IndexFlatIP(embeddings.shape[1])
-index.add(embeddings)
+from app.service.embedding_service import embedding_service
 
 def search_products(products, user_id, q, page=1, page_size=100):
     """
@@ -46,8 +35,8 @@ def search_products(products, user_id, q, page=1, page_size=100):
     # --- Step 0: 语义向量召回 ---
     # 只对召回的topN商品做后续处理，提升相关性和效率
     topN = 200  # 召回数量可根据实际需求调整
-    query_emb = model.encode([q], normalize_embeddings=True)
-    D, I = index.search(query_emb, topN)
+    query_emb = embedding_service.encode_query(q, normalize=True)
+    D, I = embedding_service.search(query_emb, topN)
     recall_indices = I[0]
     # 过滤无效索引（faiss可能返回-1）
     recall_indices = [i for i in recall_indices if i >= 0 and i < len(products)]
