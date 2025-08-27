@@ -1,218 +1,73 @@
-import os
-import random
-
 import numpy as np
 
 from app.service.data_loader import products
 from app.service.embedding_service import embedding_service
+from app.service.front_page_scene import get_global_top_products
 from db.database import get_user_recent_click_asins
 
+# 兼容占位：外部旧代码如果 import gen_embeddings 不再报错
+# 不再在此生成向量，统一用 generate_embeddings.py 或 run.py.ensure_embeddings()
 
-def gen_embeddings():
-    # 判断 embedding 文件是否已存在，存在则不重复生成
-    if os.path.exists('product_emb.npy'):
-        print("Embedding 文件已经存在，无需重复生成。")
-        return
+def gen_embeddings():  # 兼容旧引用
+    print("gen_embeddings 已废弃：请使用 app.service.generate_embeddings.generate_embeddings 或启动脚本自动生成。")
 
-    # 1. 使用共享模型
-    model = embedding_service.get_model()
-
-    asins, titles = products['asin'].tolist(), products['title'].tolist()
-
-    # 3. 批量生成embedding（按需分批，防止内存溢出）
-    BATCH = 50000
-    embeddings = []
-    for i in range(0, len(titles), BATCH):
-        batch_titles = titles[i:i + BATCH]
-        batch_emb = model.encode(
-            batch_titles,
-            show_progress_bar=True,
-            convert_to_numpy=True,
-            normalize_embeddings=True  # 归一化便于后续用内积检索
-        )
-        embeddings.append(batch_emb)
-    all_embeddings = np.vstack(embeddings)  # shape = (商品数, emb_dim)
-
-    # 4. 持久化embedding和asin
-    np.save('product_emb.npy', all_embeddings)
-    with open('asin_list.txt', 'w') as f:
-        for asin in asins:
-            f.write(f"{asin}\n")
-
-
-print("start to load embeddings")
-gen_embeddings()
 all_embeddings = embedding_service.get_embeddings()
-print("向量总数:", all_embeddings.shape[0])
-print("每个向量维度:", all_embeddings.shape[1])
-print("该向量内容（head5）:", all_embeddings[0][:5])
+index = embedding_service.get_index()
 
-
-def get_shared_index():
-    return embedding_service.get_index()
-
-
-index = get_shared_index()
-
-
-def faiss_ann_recall(user_click_asins, topn=200):
-    """
-    基于FAISS高效召回相似商品的asin列表，过滤用户已交互，并做简单多样性采样。
-
-    Args:
-        user_click_asins (list): 用户近期浏览/点击过的asin列表。
-        topn (int): 召回商品的最大数量。
-
-    Returns:
-        List[str]: 高相关性且类别多样的asin集合，按得分降序排序。
-    """
-    # 1. 数据准备
+def faiss_high_relevance_recall(user_click_asins, topn=200, per_item_search=60, agg_lambda=0.3,
+                                extra_multiplier=4):
+    if not user_click_asins or all_embeddings is None or index is None:
+        return []
     all_asins = products['asin'].tolist()
     asin2idx = {asin: i for i, asin in enumerate(all_asins)}
-    asin2cat = dict(zip(products['asin'], products.get('category_id', [''] * len(products))))
-    idx_list = [asin2idx[asin] for asin in user_click_asins if asin in asin2idx]
-
+    idx_list = [asin2idx[a] for a in user_click_asins if a in asin2idx]
     if not idx_list:
         return []
-
-    # 2. 批量embedding检索 - 增加随机性
-    batch_embs = all_embeddings[idx_list]  # shape: (|user_click_asins|, emb_dim)
-
-    # 添加随机噪声增加多样性
-    noise_factor = 0.05
-    noise = np.random.normal(0, noise_factor, batch_embs.shape)
-    batch_embs = batch_embs + noise
-
-    # 随机调整检索数量，增加召回数量
-    search_topn = topn + random.randint(50, 100)
-    D, I = index.search(batch_embs, search_topn)
-
-    # 3. 按得分聚合并去重，仅保留分最高的版本
-    seen = set(user_click_asins)
+    user_clicked_embs = all_embeddings[idx_list]
+    m = len(idx_list)
+    distance_from_end = (m - 1) - np.arange(m)
+    weights = np.exp(-agg_lambda * distance_from_end)
+    weights = weights / (weights.sum() + 1e-9)
+    user_profile_vec = (weights[:, None] * user_clicked_embs).sum(axis=0)
+    user_profile_vec = (user_profile_vec / (np.linalg.norm(user_profile_vec) + 1e-9)).astype('float32')
+    search_topn = min(len(all_asins), topn * extra_multiplier)
+    D_main, I_main = index.search(user_profile_vec[None, :], search_topn)
     score_map = {}
-    for row, sims in zip(I, D):
-        for idx, s in zip(row, sims):
-            if idx == -1:
-                continue
-            if idx >= len(all_asins):
-                continue
-            asin = all_asins[idx]
-            if asin in seen:
-                continue
-            # 保留最高分，但添加随机扰动
-            random_factor = random.uniform(0.9, 1.1)  # 增加随机扰动范围
-            adjusted_score = s * random_factor
-            if (asin not in score_map) or (score_map[asin] < adjusted_score):
-                score_map[asin] = float(adjusted_score)
+    clicked_set = set(user_click_asins)
+    for idx, score in zip(I_main[0], D_main[0]):
+        if idx == -1 or idx >= len(all_asins):
+            continue
+        asin = all_asins[idx]
+        if asin in clicked_set:
+            continue
+        if asin not in score_map or score_map[asin] < score:
+            score_map[asin] = float(score)
+    if per_item_search > 0:
+        max_items_for_local = 15
+        selected = idx_list[-max_items_for_local:]
+        local_k = min(per_item_search, len(all_asins))
+        batch_embs = all_embeddings[selected]
+        D_loc, I_loc = index.search(batch_embs, local_k)
+        decay = 0.6
+        for row_scores, row_indices in zip(D_loc, I_loc):
+            for sc, idx in zip(row_scores, row_indices):
+                if idx == -1 or idx >= len(all_asins):
+                    continue
+                asin = all_asins[idx]
+                if asin in clicked_set:
+                    continue
+                sc2 = sc * decay
+                if asin not in score_map or score_map[asin] < sc2:
+                    score_map[asin] = float(sc2)
+    sorted_items = sorted(score_map.items(), key=lambda x: -x[1])
+    return [a for a, _ in sorted_items[:topn]]
 
-    # 4. 得分排序
-    candidates = sorted(score_map.items(), key=lambda x: -x[1])
-
-    # 5. 增强多样性采样：确保品类分布更均匀
-    max_per_cat = random.randint(100, 150)  # 增加每类最大数量
-    cat_count = {}
-    diverse = []
-
-    # 随机打乱候选列表
-    random.shuffle(candidates)
-
-    # 第一轮：按品类限制采样
-    for asin, sim in candidates:
-        cat = asin2cat.get(asin, '')
-        if cat_count.get(cat, 0) < max_per_cat:
-            diverse.append(asin)
-            cat_count[cat] = cat_count.get(cat, 0) + 1
-        if len(diverse) >= topn:
-            break
-
-    # 第二轮：如果品类不够多样，补充其他品类
-    if len(cat_count) < 5:  # 如果品类少于5个，补充更多品类
-        remaining_candidates = [asin for asin, _ in candidates if asin not in diverse]
-        for asin in remaining_candidates:
-            cat = asin2cat.get(asin, '')
-            if cat not in cat_count or cat_count[cat] < max_per_cat // 2:
-                diverse.append(asin)
-                cat_count[cat] = cat_count.get(cat, 0) + 1
-            if len(diverse) >= topn * 1.5:  # 允许更多商品
-                break
-
-    return diverse
-
-
-def recall(user_id, top_n=5000, hybrid=True):
+def recall(user_id, top_n=5000):
     user_click_asins = get_user_recent_click_asins(user_id)
-
-    # 随机化召回数量，增加召回量
-    recall_multiplier = random.uniform(2.0, 3.0)  # 增加召回倍数
-    adjusted_top_n = int(top_n * recall_multiplier)
-
-    recall_faiss = faiss_ann_recall(user_click_asins, adjusted_top_n) if user_click_asins else []
-    recall_cf = []
-    recall_hot = get_global_top_products(adjusted_top_n)
-
-    recall_union, seen = [], set(user_click_asins)
-    for asin in recall_faiss + recall_cf + recall_hot:
-        if asin not in seen:
-            recall_union.append(asin)
-            seen.add(asin)
-        if len(recall_union) >= top_n * 4:  # 增加联合召回数量
-            break
-
-    # 增强打散：按品类分桶轮转采样，提升多样性
-    asin2cat = dict(zip(products['asin'], products.get('category_id', [''] * len(products))))
-    buckets = {}
-    for asin in recall_union:
-        cat = asin2cat.get(asin, 'unknown')
-        buckets.setdefault(cat, []).append(asin)
-
-    # 随机打乱每个桶内的顺序
-    for cat in buckets:
-        random.shuffle(buckets[cat])
-
-    # 轮转采样，但增加随机性和数量
-    diverse = []
-    bucket_keys = list(buckets.keys())
-    random.shuffle(bucket_keys)  # 随机化桶的顺序
-
-    # 确保每个品类都有代表
-    min_per_bucket = max(1, top_n // len(buckets)) if buckets else 1
-
-    while len(diverse) < top_n:
-        empty = 0
-        for cat in bucket_keys:
-            if buckets[cat]:
-                # 每个桶至少取min_per_bucket个商品
-                items_to_take = min(min_per_bucket, len(buckets[cat]))
-                for _ in range(items_to_take):
-                    if buckets[cat] and len(diverse) < top_n:
-                        diverse.append(buckets[cat].pop(0))
-                    else:
-                        break
-            else:
-                empty += 1
-        if empty == len(buckets):
-            break
-
-    # 如果还有剩余商品，继续采样
-    remaining = [asin for cat in buckets.values() for asin in cat]
-    random.shuffle(remaining)
-    diverse.extend(remaining[:top_n - len(diverse)])
-
-    # 最终随机打乱
-    random.shuffle(diverse)
-
-    # 返回asin列表，不查详情，保证后续排序流程可用
-    return diverse[:top_n]
-
-
-def recommend_based_on_similar_users(user_id, top_n=500):
-    # 可实现“冷启动”推荐算法，比如热门商品或整体top
-    return get_global_top_products(top_n=top_n)
-
-
-def get_global_top_products(top_n=1000):
-    return list(products['asin'].value_counts().head(top_n).index)
-
-
-if __name__ == '__main__':
-    gen_embeddings()
+    if not user_click_asins:
+        return get_global_top_products(limit=top_n)
+    candidates = faiss_high_relevance_recall(user_click_asins, topn=top_n)
+    if len(candidates) < top_n:
+        hot = [a for a in get_global_top_products(limit=top_n * 2) if a not in candidates][: (top_n - len(candidates))]
+        candidates.extend(hot)
+    return candidates[:top_n]

@@ -8,7 +8,7 @@ import pandas as pd
 from sklearn.feature_extraction.text import CountVectorizer
 from textblob import TextBlob  # 用于情感分析
 
-from db.database import load_data, get_one_product, get_recommended_products
+from db.database import load_data, get_one_product
 
 # Redis 实例（伪 Redis 数据库）
 redis_instance = fakeredis.FakeStrictRedis()
@@ -175,35 +175,6 @@ def user_behavior_update(user_id, asin):
         print(f"Error updating the user profile for {user_id}: {e}")
         print("Current user profile:", user_profile)
 
-# 推荐列表的写入和读取（全部为JSON字符串）
-def update_recommendations_after_click(user_id, asin):
-    user_profile = get_user_profile_detail(user_id)
-    if not user_profile:
-        print(f"User {user_id} profile does not exist in Redis. Initialize profile first.")
-        return
-    category_preferences = user_profile["category_preferences"]
-    top_category = max(category_preferences, key=category_preferences.get, default=None)
-    recommended_products = get_recommended_products(top_category, asin)
-    if recommended_products.empty:
-        print(f"No recommendations found based on top category {top_category} for user {user_id}.")
-        return
-    recommendations = recommended_products["asin"].tolist()
-    # 存JSON字符串
-    redis_instance.set(f"recommendations:{user_id}", json.dumps({"recommended_products": recommendations}))
-    print(f"Recommendations updated for User {user_id}: {recommendations}")
-
-def get_recommendations(user_id):
-    rec_json = redis_instance.get(f"recommendations:{user_id}")
-    if rec_json is None:
-        return None
-    if isinstance(rec_json, bytes):
-        rec_json = rec_json.decode('utf-8')
-    try:
-        return json.loads(rec_json)
-    except Exception as e:
-        print(f"Cannot parse recommendation JSON for {user_id}: {e}")
-        return None
-
 # 初始化流程
 def init_user_profile():
     global user_profiles
@@ -221,3 +192,36 @@ def init_user_profile():
     save_profiles_to_file(user_profiles)
     store_profiles_in_redis(redis_instance, user_profiles)
 
+def create_empty_profile():
+    """创建一个空的默认用户画像结构"""
+    return {
+        "age_group": "unknown",
+        "gender": "unknown",
+        "average_rating": 0.0,
+        "review_count": 0,
+        "category_preferences": {},
+        "brand_preferences": {},
+        "product_preferences": {},
+        "average_price": 0.0,
+        "expensive_product_count": 0,
+        "top_keywords": [],
+        "sentiments": {"positive": 0, "neutral": 0, "negative": 0},
+        "user_prices": []
+    }
+
+def ensure_user_profile(user_id: str):
+    """若用户画像不存在则创建空画像并写入内存与redis"""
+    global user_profiles
+    if user_id in user_profiles:
+        return user_profiles[user_id]
+    existing = get_user_profile_detail(user_id)
+    if existing:
+        user_profiles[user_id] = existing
+        return existing
+    profile = create_empty_profile()
+    user_profiles[user_id] = profile
+    try:
+        redis_instance.set(f"user:{user_id}", json.dumps(profile))
+    except Exception as e:
+        print(f"Failed to store empty profile for {user_id}: {e}")
+    return profile

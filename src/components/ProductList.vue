@@ -119,6 +119,11 @@ export default {
   },
 
   mounted() {
+    // 优化：从 localStorage 恢复搜索内容
+    const savedQuery = localStorage.getItem('searchQuery');
+    if (savedQuery !== null) {
+      this.searchQuery = savedQuery;
+    }
     this.fetchProducts();
     this.setupInfiniteScroll();
   },
@@ -199,6 +204,8 @@ export default {
     handleSearch() {
       this.currentPage = 1;
       this.hasMore = true;
+      // 优化：搜索内容保存到 localStorage
+      localStorage.setItem('searchQuery', this.searchQuery);
       this.fetchProducts(this.currentPage, this.searchQuery);
     },
     clearBrowsingHistory() {
